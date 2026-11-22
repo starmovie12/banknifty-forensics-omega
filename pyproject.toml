@@ -1,0 +1,150 @@
+# banknifty-forensics-omega | FILE-004 | PRD v2.2.0
+# PRD-NOTE: prompt expected PRD v2.1.0; PRD says v2.2.0
+
+[build-system]
+# PRD-GAP: build backend not named in PRD (assumed: hatchling>=1.27, first release with PEP 639 SPDX support)
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "banknifty-forensics-omega"  # PR-13
+# PRD-GAP: package version not stated; 19.1 names v1.0.0 as the release target (assumed: 0.1.0)
+version = "0.1.0"
+description = "Diagnosis-only Bank Nifty deep data forensics lab (V5 + Omega Never-Stop Engine)"
+readme = "README.md"  # FILE-001
+requires-python = ">=3.11,<3.13"  # PRD 7.7
+# PRD-GAP: D-9 license undecided (assumed: LicenseRef-Proprietary, the PRD's recommended Proprietary / All Rights Reserved)
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE"]  # FILE-002
+# PRD-GAP: authors not provided in PRD (assumed: key omitted)
+# PRD-GAP: keywords not provided in PRD (assumed: key omitted)
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+# PRD 7.7; scipy bound differs by Python version
+dependencies = [
+    "jsonschema>=4.21,<5.0",
+    "numpy>=1.26,<3.0",
+    "pandas>=2.2,<3.0",
+    "pyarrow>=18.0,<27.0",
+    "pyyaml>=6.0,<7.0",
+    "scikit-learn>=1.4,<2.0",
+    "scipy>=1.12,<1.18; python_version < '3.12'",
+    "scipy>=1.12,<2.0; python_version >= '3.12'",
+]
+
+# PRD-GAP: no project URLs in PRD (assumed: [project.urls] omitted)
+
+[project.scripts]
+# PRD-GAP: FR-19 / 10.3 name the `bnf` command and FILE-024 cli.py but not the callable (assumed: main)
+bnf = "bn_forensics.cli:main"
+
+[project.optional-dependencies]
+# PRD-GAP: PRD 7.7 lists pytest and ruff as dev tools without an extra name; coverage and psutil (NFR-02) are not listed (assumed: extra "dev", neither added)
+dev = [
+    "pytest>=8.0,<9.0",
+    "ruff>=0.4,<1.0",
+]
+
+[tool.hatch.build.targets.wheel]
+# PRD-GAP: config/, schemas/ and prompts/ sit at repo root outside the package (7.2) (assumed: not packaged as package-data)
+packages = ["src/bn_forensics"]
+
+[tool.hatch.build.targets.sdist]
+# Allow-list; runtime/output directories per PRD 7.8, generic exclusions for tests, docs, scripts, data
+include = [
+    "/LICENSE",
+    "/README.md",
+    "/pyproject.toml",
+    "/src/bn_forensics",
+]
+exclude = [
+    "/bricks_pending.yaml",
+    "/cache",
+    "/data",
+    "/docs",
+    "/incoming",
+    "/ledger",
+    "/proposals",
+    "/raw",
+    "/runs",
+    "/scripts",
+    "/store",
+    "/tests",
+    "/tickets",
+    "/week_*",
+]
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+    "--tb=short",
+]
+xfail_strict = true
+# PRD defines no pytest markers; none registered.
+# Seed 42 / BNF_SEED (NFR-03) cannot be set here; pytest-env is not approved.
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# S: NFR-05 bans eval/exec; NPY: numpy is a PRD dependency (seed=42 determinism, NFR-03)
+# PRD-GAP: exact `make lint` / FILE-007 commands not specified (assumed: `ruff check` and `ruff format --check`, no flags)
+select = [
+    "B",
+    "C4",
+    "E",
+    "F",
+    "I",
+    "NPY",
+    "PT",
+    "RUF",
+    "S",
+    "SIM",
+    "UP",
+    "W",
+]
+ignore = [
+    "E501",    # formatter owns wrapping; long string literals cannot be wrapped
+    "RUF001",  # PRD labels use non-ASCII (Ω-A, em dash in "N/A — DATA MISSING"), PRD 15.2
+    "RUF002",  # same reason as RUF001
+    "RUF003",  # same reason as RUF001
+]
+
+[tool.ruff.lint.per-file-ignores]
+"src/bn_forensics/cli.py" = ["S603", "S607"]  # FILE-024 runs FILE-034/FILE-037 via isolated `python3 -m` subprocess.run (8.1)
+"tests/**" = ["S101"]  # assert in pytest tests
+
+[tool.ruff.lint.isort]
+known-first-party = ["bn_forensics"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.coverage.run]
+# PRD-GAP: PRD 7.7 lists no coverage tool or threshold (assumed: config only, no dependency, no fail_under)
+source = ["src/bn_forensics"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "@(typing\\.)?overload",
+]
