@@ -123,3 +123,26 @@ Provisional:
 - a mismatch that is demoted to `D UNVERIFIED` and still unresolved after 2 rounds gives `PARTIAL`
   (exit `2`), as T-10 says;
 - a mismatch that is neither demoted nor removed gives `MODE: INVALID` (exit `4`), as FR-16 says.
+
+## ST-2
+
+**DEF-18 · FILE-026 · FR-01, Q2 · §10.1 / §10.1b**
+Q2 requires "the per-table list for derived tables, §10.1", but §10.1 gives no per-table column lists
+for `bars_3m`, `bars_15m`, `chain_1m`, `chain_metrics_1m`, `iv_greeks_1m`, `iv_daily_DERIVED` or
+`daily_metrics_DERIVED`. It only mentions `o_DERIVED…`, `available_from_ts`, `iv_status`, `version`
+and `check_time`.
+Provisional: `quartermaster.DERIVED_REQUIRED` holds the minimal identity and availability columns
+observed in S7. A missing derived column makes that family `N/A — DATA MISSING` plus a DRT. It is
+never a reject, because only `spot_1m` is mandatory.
+
+**DEF-19 · FILE-015 / FILE-013 · FR-07 · §9.2 vs §9.3**
+AP28 (MACD), AP29 (EMA 9/21 cross), AP30 (%b) and AP31 (Supertrend) need indicator bricks that the
+§9.3 brick table does not list. AP18 (sweep-and-reject) also needs the bar extreme against the
+previous-day level.
+Provisional:
+- the AP-support bricks `macd_hist`, `macd_line`, `ema_9_21`, `bb_pctb` and `supertrend_dir` are
+  added, marked `ap_support`;
+- `dist_pdh_atr` and `dist_pdl_atr` gain a `_x` (bar-extreme) variant.
+
+AP03 (signed GEX) and AP04 (trade-side flow) reference data that no S7 table provides. They resolve
+to `N/A — DATA MISSING` plus a DRT through `data_needed`, and no brick is invented.
