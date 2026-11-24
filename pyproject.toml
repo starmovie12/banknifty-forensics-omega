@@ -54,7 +54,6 @@ packages = ["src/bn_forensics"]
 [tool.hatch.build.targets.wheel.force-include]
 "config" = "bn_forensics/_assets/config"
 "schemas" = "bn_forensics/_assets/schemas"
-"prompts" = "bn_forensics/_assets/prompts"
 "tests/fixtures/sample_spot_3d.csv" = "bn_forensics/_assets/fixtures/sample_spot_3d.csv"
 
 [tool.hatch.build.targets.sdist]
