@@ -209,13 +209,15 @@ def _ledger_any(world: NullWorld, cards: Sequence[tuple[int, int]], n_fwd: int, 
     fwd_x = rng.normal(0, 1, (len(cards), n_fwd))
     fwd_e = rng.random((len(cards), n_fwd)) < 0.4
     fwd_b = rng.normal(0, 0.1, (len(cards), n_fwd))
+    # residuals are predictable (r_d uses b_{<d} only), so each tick's prefix equals the full-series prefix
+    fwd_r = np.vstack([predictable_residuals(np.where(fwd_e[row], fwd_x[row], np.nan), fwd_b[row], prior_sum=hist[i][2],
+                                             prior_n=hist[i][3]) for row, (i, _sign) in enumerate(cards)])
     for end in range(tick, n_fwd + 1, tick):
         log_e, s_sign = {}, {}
         for row, (i, _sign) in enumerate(cards):
-            sign, sd, bsum, bn = hist[i]
-            xs = np.where(fwd_e[row, :end], fwd_x[row, :end], np.nan)
-            r = predictable_residuals(xs, fwd_b[row, :end], prior_sum=bsum, prior_n=bn)
-            fin = r[~np.isnan(r)]
+            sign, sd, _bsum, _bn = hist[i]
+            seg = fwd_r[row, :end]
+            fin = seg[~np.isnan(seg)]
             if sd <= 1e-12 or fin.size == 0:
                 log_e[str(i)], s_sign[str(i)] = 0.0, 0.0
                 continue
@@ -323,16 +325,18 @@ def twin_parity(fr: BarFrame, run_ctx: Ctx, n_events: int = 200, seed: int = 42,
     cap = max(1, horizon_cap(fr.bars_per_day))
     candidates = np.flatnonzero(~fr.masked)
     chosen = np.sort(rng.choice(candidates, size=min(n_events, candidates.size), replace=False))
-    groups: dict[tuple[str, int, str], list[int]] = {}
-    for i in chosen:
+    # 10 random specs (target, horizon, side) x 20 random events each
+    order = rng.permutation(chosen)
+    groups: list[tuple[str, int, str, list[int]]] = []
+    for chunk in np.array_split(order, max(1, min(10, order.size))):
         target = str(rng.choice(["T1", "T2", "T3", "T4", "T8"]))
         h = 1 if target == "T8" else int(rng.integers(1, cap + 1))
         side = str(rng.choice(["continuation", "reversal"]))
-        groups.setdefault((target, h, side), []).append(int(i))
+        groups.append((target, h, side, sorted(int(i) for i in chunk)))
     direction = np.where(rng.random(fr.n) < 0.5, 1.0, -1.0)
     mismatches: list[dict[str, Any]] = []
     compared = 0
-    for (target, h, side), idx in sorted(groups.items()):
+    for target, h, side, idx in groups:
         mask = np.zeros(fr.n, dtype=bool)
         mask[idx] = True
         res = event_study(fr, mask, direction=direction, side=side, target=target, horizon=h, bootstrap=False, ctx=run_ctx)
