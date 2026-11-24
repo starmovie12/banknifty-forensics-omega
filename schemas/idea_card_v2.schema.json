@@ -30,7 +30,7 @@
     "cutoffs": {"enum": ["discovery_frozen", "fold_local"]},
     "data_needed": {
       "type": "array", "maxItems": 20, "uniqueItems": true,
-      "items": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,64}$"}
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,64}(:[A-Za-z0-9_]{1,32})?$"}
     },
     "cost_series": {"enum": ["underlying", "option", "option_buyer", "structure_only"]},
     "mechanism": {"$ref": "#/$defs/mechanism"},
@@ -85,7 +85,7 @@
             "brick": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$"},
             "formula": {"type": "string", "minLength": 1, "maxLength": 400},
             "available_at": {"type": "string", "minLength": 1},
-            "data_needed": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,64}$"}},
+            "data_needed": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,64}(:[A-Za-z0-9_]{1,32})?$"}},
             "why": {"type": "string", "minLength": 1},
             "leak_gate": {"enum": ["pending", "passed", "rejected"]},
             "proposed_by": {"type": "string"}
