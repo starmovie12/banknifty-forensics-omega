@@ -921,7 +921,8 @@ def event_study(frame: BarFrame, mask: np.ndarray, *, direction: np.ndarray | No
         hit_lift = float("nan")
         if target in ("T1", "T6", "T8"):
             hits = (signed[idx] > 0).astype(float)
-            hit_lift = float(100.0 * (np.mean(hits) - np.nanmean(hit_base[idx])))
+            base_hits = hit_base[idx][np.isfinite(hit_base[idx])]
+            hit_lift = float(100.0 * (np.mean(hits) - base_hits.mean())) if base_hits.size else float("nan")
         sd_out = float(np.std(signed[idx], ddof=1)) if n_ev > 1 else float("nan")
     else:
         lift = med = ev_val = base_mean = lift_pts = hit_lift = sd_out = float("nan")
