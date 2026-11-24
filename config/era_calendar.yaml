@@ -1,0 +1,123 @@
+# FILE-016 · config/era_calendar.yaml · contract-spec eras, session grids, named windows,
+# availability lags and the Exposure Calendar (R28, R29, FR-02, FR-04, FR-20).
+#
+# R29: actual expiry dates, lot sizes and bars/day are READ FROM DATA (contracts.csv,
+# expiry_date, the observed bar grid). The rules here are only the cross-check reference;
+# a disagreement is logged and never silently resolved.
+schema_version: "1.0"
+calendar_id: "bnf-era-calendar-v3.0.0"
+underlying: "BANKNIFTY"
+
+eras:
+  - id: "A"
+    from: null
+    to: "2024-11-13"
+    expiry_cycle: "weekly+monthly"
+    expiry_rule:
+      weekly: "weekly expiry (weekday changed during the era; see sub_rules)"
+      monthly: "last Thursday"
+    sub_rules:
+      - {from: null, to: "2023-09-05", weekly_weekday: "Thursday", verified: false,
+         note: "USER TO CONFIRM (D-4, DEF-12)"}
+      - {from: "2023-09-06", to: "2024-11-13", weekly_weekday: "Wednesday", verified: false,
+         note: "USER TO CONFIRM (D-4, DEF-12): the 'Era A Sep 2023 shift'"}
+    option_structure_comparable: false     # weekly-expiry mechanisms -> ERA-SPECIFIC (Ω-7, FM-35)
+    source: "PRD §20.2 D-3/D-4; weekly series ended 2024-11-13"
+  - id: "B1"
+    from: "2024-11-14"
+    to: "2024-12-31"
+    expiry_cycle: "monthly"
+    expiry_rule: {monthly: "last Wednesday"}
+    option_structure_comparable: true
+    verified: true
+    source: "PRD CF-11 resolved (S8)"
+  - id: "B2"
+    from: "2025-01-01"
+    to: "2025-08-31"
+    expiry_cycle: "monthly"
+    expiry_rule: {monthly: "last Thursday"}
+    first_expiry: "2025-01-30"
+    last_expiry: "2025-08-28"
+    option_structure_comparable: true
+    verified: true
+    source: "NSE circular 65336 (2024-11-29); 2025-03-04 Monday proposal never took effect (CF-11, A-3)"
+  - id: "B3"
+    from: "2025-09-01"
+    to: null
+    expiry_cycle: "monthly"
+    expiry_rule: {monthly: "last Tuesday"}
+    option_structure_comparable: true
+    verified: true
+    source: "NSE Tuesday change effective after 2025-08-28 (S8); holiday shifts read from data, e.g. Monday 2026-11-23 (S7)"
+
+holiday_rule: "an expiry falling on an exchange holiday moves to the previous trading day"
+holidays: []                       # no verified NSE holiday list supplied (D-4): USER TO CONFIRM
+
+weekday_index: {Monday: 0, Tuesday: 1, Wednesday: 2, Thursday: 3, Friday: 4}
+
+# Expected session grids per table family (Q6 cross-check; the grid is MEASURED per table per day).
+session_grids:
+  index:                           # spot_1m, vix_1m, bars_*: NSE_INDEX segment
+    - {from: null, to: null, open: "09:15", bars: 375, interval_min: 1}
+  fno:                             # fut_1m, opt_1m, opt_wide_1m: NSE_FO segment
+    - {from: null, to: "2026-07-31", open: "09:15", bars: 375, interval_min: 1}
+    - {from: "2026-08-03", to: null, open: "09:15", bars: 385, interval_min: 1}
+  equity:                          # stock_1m (bank constituents)
+    - {from: null, to: null, open: "09:15", bars: 375, interval_min: 1}
+table_family:
+  spot_1m: index
+  vix_1m: index
+  bars_3m: index
+  bars_15m: index
+  fut_1m: fno
+  opt_1m: fno
+  opt_wide_1m: fno
+  chain_1m: fno
+  chain_metrics_1m: fno
+  iv_greeks_1m: fno
+  stock_1m: equity
+  global_1m: global                # foreign sessions: grid is measured only, never expected
+
+# Named intraday windows (Phase 5.1, AP35). anchor "open"/"close" = offsets from the OBSERVED
+# session grid of the analysed table; anchor "clock" = IST wall-clock times.
+named_windows:
+  first_15m: {anchor: open, start_min: 0, end_min: 15}
+  lunch_lull: {anchor: clock, start: "11:30", end: "13:29"}
+  last_hour: {anchor: close, start_min: 60, end_min: 0}
+  close_bar: {anchor: close, start_min: 1, end_min: 0}
+
+# Opening ranges (AP14/AP15, Phase 2.4), minutes from the observed session open.
+opening_ranges:
+  default: 30
+  alternates: [15, 60]
+
+# Early-predictability checkpoints (AP08, Phase 6.3) and opening-drive reads (AP16, AP34).
+checkpoints:
+  cp_0930: "09:30"
+  cp_0945: "09:45"
+  cp_1000: "10:00"
+  cp_1030: "10:30"
+  cp_1100: "11:00"
+
+# Vendor availability lags (R8, Q7, FM-40). A value is usable at max(bar close, available_from_ts).
+availability:
+  derived_1m_lag_min: 1
+  bars_3m_lag_min: 3
+  bars_15m_lag_min: 15
+  iv_daily_check_times: ["10:00", "14:00"]
+  daily_metrics_versions:
+    INTRADAY_PREV_CLOSE: {usable_from: "09:15", intraday: true}
+    EOD_INCLUSIVE: {usable_from: "15:30", intraday: false}   # never usable intraday (LEAK-REJECTED)
+  xcheck_usable: "next_session"                               # day-D xcheck values usable from D+1
+
+# Cost-model calendar facts (§10.4 #11).
+stt_change_date: "2026-04-01"
+
+# Exposure Calendar (R28, D-12). Days inside these ranges were already used by earlier research
+# programmes (S9: 477 trials). A Court verdict whose event-days are > 50% EXPOSED is EXPOSED-COURT.
+exposure_calendar:
+  policy_default: "cap"            # cap | exclude | ignore (D-12)
+  ranges:
+    - {from: "2024-11-21", to: "2026-07-03", label: "S1-S3 DESIGN window", source: "S9 owner research log"}
+    - {from: "2026-07-06", to: "2026-11-12", label: "S1-S3 HOLDOUT (opened once on 2026-11-18)", source: "S9 owner research log"}
+  confirmed_by_owner: false        # pre-flight item 13: owner confirms before Run-2
