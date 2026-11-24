@@ -493,9 +493,15 @@ def adapt_csv(path: str | Path, cal: dict[str, Any], *, table: str = "spot_1m",
     report = AdapterReport(source_file=src.name, sha256=digest, rows_in=rows_in, rows_out=n,
                            dropped=dict(dropped), symbol=symbol, interval=interval_txt,
                            ts_convention=convention, notes=notes)
-    if not report.conserved:
-        raise RowConservationError(f"adapter row loss in {src.name}: {rows_in} != {n} + {sum(dropped.values())}")
+    check_row_conservation(rows_in, n, sum(dropped.values()), f"adapter {src.name}")
     return table_out, report
+
+
+def check_row_conservation(rows_in: int, rows_out: int, dropped_logged: int, where: str) -> None:
+    """Q10 / F6: ``rows_in == rows_out + rows_dropped_logged`` or MODE: INVALID (exit 4)."""
+    if int(rows_in) != int(rows_out) + int(dropped_logged):
+        raise RowConservationError(
+            f"{where}: row conservation failed: rows_in {rows_in} != rows_out {rows_out} + dropped_logged {dropped_logged} (Q10, F6)")
 
 
 # =============================================================================================
@@ -668,8 +674,7 @@ def quarantine_base_table(table: pa.Table, *, table_name: str, cal: dict[str, An
     checks["Q10"] = CheckResult("Q10", "PASS" if ledger_ok else "FAIL",
                                 f"rows_in {rows_in} == rows_out {rows_out} + dropped_logged {sum(dropped.values())}: {ledger_ok}",
                                 {"rows_in": rows_in, "rows_out": rows_out, "dropped": sum(dropped.values())})
-    if not ledger_ok:
-        raise RowConservationError(f"{table_name}: row conservation failed (Q10)")
+    check_row_conservation(rows_in, rows_out, sum(dropped.values()), table_name)
     adj = sorted(set(df["adjusted_status"].astype(str)))
     tags = []
     if canonical_segment(str(df["segment"].iloc[0]) if len(df) else "", None) == "FUT" and adj != ["UNADJUSTED"]:
@@ -717,6 +722,18 @@ def check_derived_table(table: pa.Table, table_name: str) -> CheckResult:
         if bad:
             return CheckResult("Q7", "FAIL", f"{table_name}: {bad} rows with available_from_ts < ts_close -> quarantined + DATA_REPAIR")
     return CheckResult("Q7", "PASS", f"{table_name}: availability guard ok")
+
+
+def derived_recipe_provenance(incoming_root: Path, derived_tables: Iterable[str]) -> dict[str, str]:
+    """Q11: ``*_DERIVED`` tables whose recipe is not documented in ``source_capability_sheet.md``
+    are tagged ``UNVERIFIED-CAUSAL`` (F13); documented ones are ``RECIPE-DOCUMENTED``."""
+    sheet = next(iter(sorted(Path(incoming_root).rglob("source_capability_sheet.md"))), None)
+    text = sheet.read_text(encoding="utf-8").lower() if sheet is not None else ""
+    out: dict[str, str] = {}
+    for table in sorted(set(derived_tables)):
+        documented = any(table.lower() in line and "recipe" in line for line in text.splitlines())
+        out[table] = "RECIPE-DOCUMENTED" if documented else "UNVERIFIED-CAUSAL"
+    return out
 
 
 def reconcile_derived_bars(spot: pa.Table, vendor: pa.Table, minutes: int) -> dict[str, Any]:
@@ -974,6 +991,7 @@ class IntakeResult:
     raw_manifest_ok: bool
     sample_first: dict[str, Any]
     row_ledger_ok: bool
+    derived_provenance: dict[str, str] = field(default_factory=dict)
     passport_path: Path | None = None
 
     def summary(self) -> dict[str, Any]:
@@ -1117,6 +1135,12 @@ def run_intake(incoming_dir: str | Path, store_dir: str | Path, *, cfg: dict[str
             part = tbl.filter(pc.equal(tbl.column("trading_date"), pa.scalar(day, pa.date32())))
             write_partition(part, store, name, und, day)
     index = StoreIndex.scan([store])
+    written_reader = StoreReader(index)
+    for (name, und), tbl in sorted(accepted.items()):
+        back = written_reader.read_arrow(name, und)
+        check_row_conservation(tbl.num_rows, 0 if back is None else back.num_rows, 0,
+                               f"store write {name}/{und} (post-write re-count)")
+    derived_provenance = derived_recipe_provenance(incoming, [c.detail.split(":")[0] for c in derived_checks if c.check == "Q7"])
     spot_reports = [r for r in reports if r.table == cfg["store"]["mandatory_table"] and r.underlying == primary] \
         or [r for r in reports if r.table == cfg["store"]["mandatory_table"]]
     clean_days = sorted(set().union(*[set(r.clean_days) for r in spot_reports])) if spot_reports else []
@@ -1141,6 +1165,11 @@ def run_intake(incoming_dir: str | Path, store_dir: str | Path, *, cfg: dict[str
                     from_=date_from, to=date_to, priority="HIGH", cells_unlocked=6, cards_unblocked=4,
                     fields=["instrument_key", "expiry", "strike", "option_type", "lot_size"], families=["calendar"],
                     questions=["Does your source provide contract master files with expiry and lot size?"])
+    for table_name, tag in sorted(derived_provenance.items()):
+        if tag == "UNVERIFIED-CAUSAL":
+            builder.add(trigger="DATA_REPAIR", why=f"{table_name}: *_DERIVED recipe missing from source_capability_sheet.md -> UNVERIFIED-CAUSAL, capped below Grade A (Q11, F13)",
+                        what=f"derivation recipe for {table_name}", instruments=[primary], priority="MEDIUM",
+                        cells_unlocked=1, families=["provenance"])
     for chk in derived_checks:
         if chk.status == "FAIL":
             builder.add(trigger="DATA_REPAIR", why=chk.detail, what="vendor derived table repair",
@@ -1175,7 +1204,7 @@ def run_intake(incoming_dir: str | Path, store_dir: str | Path, *, cfg: dict[str
                           era_counts=dict(sorted(era_counts.items())), reconciliation=reconciliation,
                           derived_checks=derived_checks, expiry=expiry, missing_families=missing_families,
                           echo_lines=echo_lines, raw_manifest_ok=raw_ok, sample_first=sample_info,
-                          row_ledger_ok=ledger_ok)
+                          row_ledger_ok=ledger_ok, derived_provenance=derived_provenance)
     if run_dir is not None:
         result.passport_path = write_data_passport(Path(run_dir) / "data_passport.md", result, audit)
     if log is not None:
@@ -1232,7 +1261,8 @@ __all__ = [
     "BASE_COLS", "BASE_NAMES", "BASE_SCHEMA", "CHECK_IDS", "DERIVED_REQUIRED", "FAMILY_TABLES",
     "STORE_RE", "AdapterReport", "CheckResult", "DrtBuilder", "IntakeResult", "Partition",
     "QuarantineReport", "StoreIndex", "StoreReader", "adapt_csv", "canonical_segment",
-    "check_derived_table", "discover_incoming", "era_of", "expected_expiry", "expected_grid",
+    "check_derived_table", "check_row_conservation", "derived_recipe_provenance",
+    "discover_incoming", "era_of", "expected_expiry", "expected_grid",
     "expiry_calendar_from_data", "exposure_ranges", "is_exposed", "load_era_calendar",
     "load_tickets", "mad_spike_flags", "power_audit", "probe_ts_convention",
     "quarantine_base_table", "quick_outcome_sd", "reconcile_derived_bars", "reconcile_sources",
