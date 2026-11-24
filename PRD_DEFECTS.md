@@ -146,3 +146,16 @@ Provisional:
 
 AP03 (signed GEX) and AP04 (trade-side flow) reference data that no S7 table provides. They resolve
 to `N/A — DATA MISSING` plus a DRT through `data_needed`, and no brick is invented.
+
+## ST-4
+
+**DEF-20 · FILE-030 / FILE-045 · FR-09, FR-18, FR-22 · §7.5 / §7.4**
+1. §7.5 lists FILE-030's imports as FILE-012/025/027/029/031. FR-18 still requires every Idea Ledger
+   record to be schema-validated, so `playground.py` also imports FILE-040 (`schemas_validator`).
+   FILE-029 already depends on FILE-040 transitively, so this adds no new layering.
+2. §7.4 describes FILE-045 as also testing "sim (Ω-10)". However, FILE-041 (`omega_sim.py`) is built
+   in ST-5 and is not among FILE-045's imports in §7.5.
+   Provisional: Ω-10 is tested in FILE-047, whose import list includes FILE-041. FILE-045 covers Ω-4,
+   Ω-5, Ω-8, Ω-11 and the Court null FPR at Court level.
+3. The Court `Candidate` type is shared by FILE-030 and FILE-032, but neither file may import the
+   other. Provisional: it lives in FILE-031, which both are allowed to import.
