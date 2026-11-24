@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -52,6 +52,7 @@ from bn_forensics.core_stats import (
     write_csv,
 )
 from bn_forensics.schemas_validator import validate_or_raise
+from bn_forensics.shrinkage_basis import Candidate
 from bn_forensics.split_seal import SplitManifest, court_days_hash
 
 EVENT_LEDGER_FIELDS = ("test_id", "date", "bar_ts", "raw_ret", "clean_ret", "baseline_ret", "next_open_ret",
@@ -59,33 +60,6 @@ EVENT_LEDGER_FIELDS = ("test_id", "date", "bar_ts", "raw_ret", "clean_ret", "bas
 VERDICT_FIELDS = ("card_id", "session_k", "lane", "target", "horizon", "sign", "alpha_k", "K", "threshold",
                   "B_court", "n_events", "event_days", "T", "lift_atr", "lift_points", "ci_lo", "ci_hi", "p",
                   "verdict", "exposure", "exposed_share", "robust", "blocks_same_sign", "card_hash", "outcome_sd")
-
-
-@dataclass
-class Candidate:
-    """One Playground card eligible for the docket (frozen sign, horizon and cut-offs)."""
-
-    card_id: str
-    card_hash: str
-    lane: str
-    sign: int
-    target: str
-    horizon: int
-    prior_weight: float
-    deflated_lift: float | None
-    event_days: frozenset[str]
-    playground_days: int
-    compiled: Any = None
-    card: dict[str, Any] = field(default_factory=dict)
-
-    @property
-    def rank_score(self) -> float:
-        dl = 0.0 if self.deflated_lift is None or not np.isfinite(self.deflated_lift) else abs(self.deflated_lift)
-        return float(self.prior_weight) * dl
-
-    @property
-    def event_rate(self) -> float:
-        return len(self.event_days) / self.playground_days if self.playground_days else 0.0
 
 
 def rank_pool(pool: Sequence[Candidate]) -> list[Candidate]:
