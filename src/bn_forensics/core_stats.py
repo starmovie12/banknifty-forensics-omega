@@ -242,7 +242,7 @@ class BarFrame:
     def week_ids(self) -> np.ndarray:
         """ISO-week id per day (Monday-based calendar week number since epoch)."""
         days_int = self.days.astype("datetime64[D]").astype(np.int64)
-        return (days_int + 3) // 7  # 1970-01-01 is a Thursday -> shift to Monday start
+        return (days_int + 3) // 7  # epoch day 0 has weekday index 3 -> shift so weeks start Monday
 
 
 def _frame_from_arrays(dates: np.ndarray, slot: np.ndarray, minute: np.ndarray, o: np.ndarray,
