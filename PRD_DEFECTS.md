@@ -39,7 +39,10 @@ But the Null Lab Peeking Trap (FR-05, Ω-3, T-08) and the `omega_sim.py` P0 and 
 must implement p-value peeking in `src/` to measure its false-positive rate. T-08 itself scopes the
 grep to `ledger.py`.
 Provisional: the AST/grep ban covers every production module. The only allowed peeking constructs are
-the functions named `peeking_trap_*` in `null_lab.py` and `sim_p0_*` / `sim_p4c_*` in `omega_sim.py`.
+the functions named `peeking_trap_*` in `null_lab.py` and, in `omega_sim.py`, the reproductions of the
+S5 historical protocols that peek by construction: `sim_p0_*`, `sim_p1_*`, `sim_p2_*`, `sim_p4c_*` and
+`sim_p6_*`. Their measured false-positive rates are the Ω-10 benchmark. The production-equivalent
+`sim_p4_evalue_peek` and `sim_p5_diverse_court` must stay unflagged, and T-08 asserts this.
 A test asserts that they exist only there, that no production module (court, ledger, playground,
 chair, reporter, cli decision paths) calls them, and that their output never feeds a verdict.
 

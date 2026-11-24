@@ -20,7 +20,9 @@ from bn_forensics import ledger as lg
 
 SRC = Path(bnf.__file__).resolve().parent
 # Declared simulation / trap modules that MUST implement p-value peeking to measure it (DEF-05).
-TRAP_ALLOWLIST = {"null_lab.py": ("peeking_trap_",), "omega_sim.py": ("sim_p0_", "sim_p4c_")}
+# omega_sim reproduces the S5 historical protocols; P0/P1/P2/P4c/P6 peek by construction (DEF-05).
+TRAP_ALLOWLIST = {"null_lab.py": ("peeking_trap_",),
+                  "omega_sim.py": ("sim_p0_", "sim_p1_", "sim_p2_", "sim_p4c_", "sim_p6_")}
 
 
 @pytest.fixture
@@ -162,6 +164,10 @@ def test_t08_static_ban_no_pvalue_peek_and_stop_in_production() -> None:
         if bad:
             offenders[path.name] = bad
     assert offenders == {}
+    sim_hits = _peek_and_stop_functions(SRC / "omega_sim.py")
+    assert "sim_p4_evalue_peek" not in sim_hits
+    assert "sim_p5_diverse_court" not in sim_hits
+    assert set(_peek_and_stop_functions(SRC / "null_lab.py")) == {"peeking_trap_pvalue", "peeking_trap_uncapped_v5"}
     trap_file = Path(__file__)
     assert _peek_and_stop_functions(trap_file) == ["_pvalue_peek_and_stop_trap"]
 
