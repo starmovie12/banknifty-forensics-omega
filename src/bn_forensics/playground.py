@@ -246,6 +246,12 @@ def gen_h11(leaders: Sequence[dict[str, Any]]) -> Iterator[dict[str, Any]]:
 # =============================================================================================
 # Engine
 # =============================================================================================
+def t_ratio(lift: float, se: float) -> float:
+    """``|lift| / se`` guarded against zero / non-finite standard errors (degenerate outcomes)."""
+    if not (np.isfinite(lift) and np.isfinite(se)) or se <= 0:
+        return 0.0
+    return abs(lift) / se
+
 @dataclass
 class ModeStatus:
     mode: str
@@ -367,7 +373,7 @@ class PlaygroundEngine:
         spec["horizons"] = [h for h in spec["horizons"] if h <= self.cap] or spec["horizons"][:1]
         results = TestRunner(self.run_ctx, self.ctx.frame, day_mask=self.fit_mask).run_batch([spec])
         usable = [r for r in results if np.isfinite(r.se) and r.se > 0 and np.isfinite(r.lift_atr)]
-        best = max(usable, key=lambda r: abs(r.lift_atr) / r.se) if usable else (results[0] if results else None)
+        best = max(usable, key=lambda r: t_ratio(r.lift_atr, r.se)) if usable else (results[0] if results else None)
         if best is None:
             return None
         days = frozenset(best.event_day_list())
@@ -378,7 +384,7 @@ class PlaygroundEngine:
             for other in self.evaluated.values():
                 if other.status == "EVALUATED" and other.card["target"] == card["target"] and \
                         jaccard(days, other.event_days) >= float(self.pcfg["merge_jaccard"]) and \
-                        other.card["side"] == card["side"] and abs(other.lift) / other.se >= abs(best.lift_atr) / best.se:
+                        other.card["side"] == card["side"] and t_ratio(other.lift, other.se) >= t_ratio(best.lift_atr, best.se):
                     status, reason = "DISCARDED", f"duplicate of {other.card['card_id']} (event-day Jaccard >= {self.pcfg['merge_jaccard']})"
                     break
         fam = card["target"]
@@ -592,5 +598,5 @@ class PlaygroundEngine:
 
 __all__ = [
     "LADDER", "CheckpointCallback", "Evaluated", "IdeaLedger", "ModeStatus", "PlaygroundEngine", "PlaygroundResult",
-    "gen_h2", "gen_h3", "gen_h4", "gen_h5", "gen_h9", "gen_h10", "gen_h11", "load_json_line", "to_dsl",
+    "gen_h2", "gen_h3", "gen_h4", "gen_h5", "gen_h9", "gen_h10", "gen_h11", "load_json_line", "t_ratio", "to_dsl",
 ]
