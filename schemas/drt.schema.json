@@ -1,0 +1,268 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bn-forensics.local/schemas/drt.schema.json",
+  "title": "Broker-neutral Data Request Ticket (FILE-019, S4 App B, K-037)",
+  "schema_version": "1.0",
+  "description": "The document root validates one ticket. $defs.ticket_file validates tickets/open_tickets.yaml.",
+  "$ref": "#/$defs/ticket",
+  "$defs": {
+    "ticket": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "ticket_id",
+        "raised_by",
+        "trigger",
+        "why",
+        "need",
+        "priority",
+        "expected_gain",
+        "effort",
+        "acceptable_substitutes",
+        "capability_questions",
+        "sample_first",
+        "sample_spec",
+        "delivery_format",
+        "acceptance_checks",
+        "if_not_delivered",
+        "adaptive_data",
+        "state"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "ticket_id": {
+          "type": "string",
+          "pattern": "^D-[0-9]{4,6}$"
+        },
+        "raised_by": {
+          "enum": [
+            "Judge",
+            "Generator",
+            "NullLab",
+            "Chair",
+            "Quartermaster"
+          ]
+        },
+        "trigger": {
+          "enum": [
+            "BLOCKED_CARD",
+            "COVERAGE_HOLE",
+            "POWER_SHORTFALL",
+            "MECHANISM_DOSE",
+            "REPLICATION",
+            "DATA_REPAIR",
+            "RECONCILIATION",
+            "CALENDAR",
+            "CURIOSITY"
+          ]
+        },
+        "why": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "need": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "what",
+            "instruments",
+            "interval",
+            "from",
+            "to",
+            "fields",
+            "session",
+            "adjusted",
+            "other"
+          ],
+          "properties": {
+            "what": {
+              "type": "string",
+              "minLength": 1
+            },
+            "instruments": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            },
+            "interval": {
+              "type": "string",
+              "minLength": 1
+            },
+            "from": {
+              "type": "string",
+              "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}|UNKNOWN)$"
+            },
+            "to": {
+              "type": "string",
+              "pattern": "^([0-9]{4}-[0-9]{2}-[0-9]{2}|UNKNOWN)$"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "session": {
+              "type": "string"
+            },
+            "adjusted": {
+              "type": "string"
+            },
+            "other": {
+              "type": "string",
+              "maxLength": 1000
+            }
+          }
+        },
+        "priority": {
+          "enum": [
+            "BLOCKER",
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ]
+        },
+        "expected_gain": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "mde_ratio",
+            "cells_unlocked",
+            "cards_unblocked"
+          ],
+          "properties": {
+            "mde_ratio": {
+              "oneOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "const": "n/a"
+                }
+              ]
+            },
+            "cells_unlocked": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "cards_unblocked": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "effort": {
+          "enum": [
+            "low",
+            "hard",
+            "unknown"
+          ]
+        },
+        "acceptable_substitutes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "capability_questions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sample_first": {
+          "type": "boolean"
+        },
+        "sample_spec": {
+          "type": "string",
+          "minLength": 1
+        },
+        "delivery_format": {
+          "enum": [
+            "canonical_store",
+            "raw_plus_adapter"
+          ]
+        },
+        "acceptance_checks": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "schema",
+              "gaps",
+              "row_conservation",
+              "ts_convention",
+              "reconciliation_if_overlap"
+            ]
+          }
+        },
+        "if_not_delivered": {
+          "type": "string",
+          "minLength": 1
+        },
+        "adaptive_data": {
+          "type": "boolean"
+        },
+        "state": {
+          "enum": [
+            "OPEN",
+            "SAMPLE-REQUESTED",
+            "SAMPLE-OK",
+            "FULL-REQUESTED",
+            "DELIVERED",
+            "QUARANTINE",
+            "ACCEPTED",
+            "REJECTED",
+            "PARTIAL"
+          ]
+        },
+        "voi_rank": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "voi_score": {
+          "type": "number",
+          "minimum": 0
+        },
+        "families": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "card_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "ticket_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version",
+        "tickets"
+      ],
+      "properties": {
+        "schema_version": {
+          "const": "1.0"
+        },
+        "tickets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/ticket"
+          }
+        }
+      }
+    }
+  }
+}
