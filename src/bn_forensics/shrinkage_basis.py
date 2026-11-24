@@ -21,7 +21,7 @@ import datetime as dt
 import math
 import re
 from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import Any
@@ -35,6 +35,38 @@ PAISE = Decimal("0.01")
 ORTHO_FIELDS = ("finding_id", "independent_effect_id", "representative", "members", "n_members",
                 "max_jaccard_in_group", "max_corr_in_group")
 OVERLAP_FIELDS = ("card_a", "card_b", "jaccard", "common_event_days", "note")
+
+
+# =============================================================================================
+# Court-eligible candidate (shared by Playground and Court)
+# =============================================================================================
+@dataclass
+class Candidate:
+    """One Playground card eligible for the Court docket: frozen sign, horizon, cut-offs and the
+    shrunk ranking score ``prior_weight * |deflated_lift|`` (FR-10 -> FR-11)."""
+
+    card_id: str
+    card_hash: str
+    lane: str
+    sign: int
+    target: str
+    horizon: int
+    prior_weight: float
+    deflated_lift: float | None
+    event_days: frozenset[str]
+    playground_days: int
+    compiled: Any = None
+    card: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def rank_score(self) -> float:
+        dl = 0.0 if self.deflated_lift is None or not np.isfinite(self.deflated_lift) else abs(self.deflated_lift)
+        return float(self.prior_weight) * dl
+
+    @property
+    def event_rate(self) -> float:
+        return len(self.event_days) / self.playground_days if self.playground_days else 0.0
+
 
 
 # =============================================================================================
@@ -405,7 +437,7 @@ def write_basis_tables(tables_dir: str | Path, basis: Sequence[Mapping[str, Any]
 
 
 __all__ = [
-    "ORTHO_FIELDS", "OVERLAP_FIELDS", "CostModel", "ShrinkageFit", "deflate", "deflated_lift",
+    "ORTHO_FIELDS", "OVERLAP_FIELDS", "Candidate", "CostModel", "ShrinkageFit", "deflate", "deflated_lift",
     "demote_grade", "eb_tau2", "fit_families", "gradient_sign", "haircut_ratio", "mechanism_check",
     "novelty_score", "orthogonal_basis", "overlap_rows", "series_costs", "tradability_tag",
     "write_basis_tables",
