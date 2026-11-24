@@ -340,8 +340,17 @@ def update_registry(path: Path, results: dict[str, dict[str, Any]]) -> None:
     write_csv_atomic(path, fields, rows)
 
 
+class _Parser(argparse.ArgumentParser):
+    """Usage errors exit 3 (§10.3 input error), never argparse's default 2."""
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        self.print_usage(sys.stderr)
+        sys.stderr.write(f"{self.prog}: error: {message}\n")
+        raise SystemExit(3)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="python -m bn_forensics.skeptic_checks", description="Isolated Skeptic pass (FILE-034)")
+    parser = _Parser(prog="python -m bn_forensics.skeptic_checks", description="Isolated Skeptic pass (FILE-034)")
     parser.add_argument("--run-dir", required=True)
     args = parser.parse_args(argv)
     if not Path(args.run_dir).is_dir():

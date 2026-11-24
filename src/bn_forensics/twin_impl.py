@@ -291,9 +291,18 @@ def bars_from_rows(rows: Iterable[dict[str, Any]]) -> list[Bar]:
     return out
 
 
+class _Parser(argparse.ArgumentParser):
+    """Usage errors exit 3 (§10.3 input error), never argparse's default 2."""
+
+    def error(self, message: str) -> None:  # type: ignore[override]
+        self.print_usage(sys.stderr)
+        sys.stderr.write(f"{self.prog}: error: {message}\n")
+        raise SystemExit(3)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     """CLI: recompute event residuals for an events CSV against Parquet partitions or a bars CSV."""
-    parser = argparse.ArgumentParser(prog="python -m bn_forensics.twin_impl", description=__doc__.splitlines()[0])
+    parser = _Parser(prog="python -m bn_forensics.twin_impl", description=__doc__.splitlines()[0])
     parser.add_argument("--bars-csv", help="CSV with date,minute,o,h,l,c,masked")
     parser.add_argument("--parquet", nargs="*", default=[], help="canonical partition files")
     parser.add_argument("--resample", type=int, default=1)
