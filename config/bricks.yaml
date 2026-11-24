@@ -1,0 +1,160 @@
+# FILE-013 · config/bricks.yaml · starter causal brick library (§9.3, S2 App B, K-024)
+# Every brick: brick_id, family, formula, available_at (= max(bar close, available_from_ts) over
+# every input, R8), data_needed, and the code implementation key `impl` (FILE-029).
+# Parameterised bricks expand to concrete ids via id_template (e.g. ret_k -> ret_1 ... ret_10).
+# "So far" intraday features use only bars up to and including the signal bar (strictly causal).
+# DEF-03: §9.3 names 59 base ids; 5 AP-support bricks (AP28-AP31) are added and marked.
+schema_version: "1.0"
+library_id: "bnf-bricks-v3.0.0"
+families: [price_candle, trend_mr, levels, volatility, time, volume_oi, options, cross_asset]
+dsl:
+  comparisons: [gt, gte, lt, lte, eq]
+  quantile_buckets: [q10, q25, q75, q90, q95, q99, tercile]
+  logic: [AND, OR, NOT]
+  functions: [sign, abs, lag, A_then_B_within, cross_above, cross_below, first_in_day, in_window, at_checkpoint, DIR, MODEL]
+  max_bricks_per_condition: 3        # PR-14
+  cutoffs: "discovery_frozen (Playground days only; MODEL cards: fold_local)"
+leak_gate:
+  shift_test: "+1 bar shift: recomputing the brick after perturbing every bar > t must leave its value at t unchanged"
+  canary: "close_{t+1} must be rejected by the same gate (gate self-test)"
+  forbidden_tokens: ["t+", "lead(", "future", "next_", "shift(-", "day_high", "day_low", "day_close", "day_type", "poc_today", "eod_", "EOD_INCLUSIVE", "final_"]
+bricks:
+  # ---------------------------------------------------------------- Price / Candle (9)
+  - {brick_id: ret_k, family: price_candle, impl: ret_k, params: {k: [1, 2, 3, 5, 10]}, id_template: "ret_{k}",
+     formula: "(close_t - close_{t-k}) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: day_ret_so_far, family: price_candle, impl: day_ret_so_far,
+     formula: "(close_t - open_of_session) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: gap_atr, family: price_candle, impl: gap_atr,
+     formula: "(open_of_session - close_of_previous_session) / ATR20 at the first session bar", available_at: "first bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: overnight_ret, family: price_candle, impl: overnight_ret,
+     formula: "100 * log(open_of_session / close_of_previous_session) (percent)", available_at: "first bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: close_loc, family: price_candle, impl: close_loc,
+     formula: "decile 1..10 of (close - low) / (high - low) of the bar", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: body_frac, family: price_candle, impl: body_frac,
+     formula: "abs(close - open) / (high - low)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: wick_ratio, family: price_candle, impl: wick_ratio,
+     formula: "(upper_wick - lower_wick) / (high - low); upper_wick = high - max(open, close)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: range_atr, family: price_candle, impl: range_atr,
+     formula: "(high - low) / ATR20_{t-1}", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: range_rank_slot, family: price_candle, impl: range_rank_slot,
+     formula: "percentile rank of the bar range among the same slot's ranges on the previous 20 sessions (prior days only)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  # ---------------------------------------------------------------- Trend / Mean-Reversion (9 + 5 AP-support)
+  - {brick_id: er_20, family: trend_mr, impl: er_n, params: {n: [20]}, id_template: "er_{n}",
+     formula: "abs(close_t - close_{t-20}) / sum(abs(close_i - close_{i-1}), i=t-19..t)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: adx_14, family: trend_mr, impl: adx_n, params: {n: [14]}, id_template: "adx_{n}",
+     formula: "Wilder ADX(14) of +DM/-DM/TR", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: rsi_14, family: trend_mr, impl: rsi_n, params: {n: [14]}, id_template: "rsi_{n}",
+     formula: "Wilder RSI(14) of close", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: ema_slope, family: trend_mr, impl: ema_slope,
+     formula: "(EMA21_t - EMA21_{t-5}) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: dist_ema_atr, family: trend_mr, impl: dist_ema_atr,
+     formula: "(close_t - EMA21_t) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: zscore_close_20, family: trend_mr, impl: zscore_close_n, params: {n: [20]}, id_template: "zscore_close_{n}",
+     formula: "(close_t - SMA20_t) / SD20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: nbar_extreme_N, family: trend_mr, impl: nbar_extreme, params: {N: [10, 20, 50]}, id_template: "nbar_extreme_{N}",
+     formula: "+1 if close_t > max(close_{t-N..t-1}); -1 if close_t < min(close_{t-N..t-1}); else 0", available_at: "bar close", data_needed: [spot_1m], kind: directional}
+  - {brick_id: bars_since_extreme, family: trend_mr, impl: bars_since_extreme,
+     formula: "bars since the most recent 20-bar closing high or low (fixed lookback)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: streak_len, family: trend_mr, impl: streak_len,
+     formula: "signed count of consecutive same-colour bars ending at t (+ up, - down)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: macd_hist, family: trend_mr, impl: macd_hist, ap_support: AP28,
+     formula: "(EMA12 - EMA26) - EMA9(EMA12 - EMA26), divided by ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: macd_line, family: trend_mr, impl: macd_line, ap_support: AP28,
+     formula: "(EMA12 - EMA26) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: ema_9_21, family: trend_mr, impl: ema_cross_diff, ap_support: AP29,
+     formula: "(EMA9_t - EMA21_t) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: bb_pctb, family: trend_mr, impl: bb_pctb, ap_support: AP30,
+     formula: "(close - (SMA20 - 2 SD20)) / (4 SD20)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: supertrend_dir, family: trend_mr, impl: supertrend_dir, ap_support: AP31,
+     formula: "Supertrend(10, 3) direction (+1 / -1) on ATR(10)", available_at: "bar close", data_needed: [spot_1m], kind: directional}
+  # ---------------------------------------------------------------- Levels (8)
+  - {brick_id: dist_pdh_atr, family: levels, impl: dist_prev_day_level, params: {level: [high], field: [close, extreme]},
+     id_template: "dist_pdh_atr{field_suffix}",
+     formula: "(close_t - previous_session_high) / ATR20_t ; _x variant uses high_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: dist_pdl_atr, family: levels, impl: dist_prev_day_level, params: {level: [low], field: [close, extreme]},
+     id_template: "dist_pdl_atr{field_suffix}",
+     formula: "(close_t - previous_session_low) / ATR20_t ; _x variant uses low_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: dist_or_high_atr, family: levels, impl: dist_or_level, params: {level: [high]},
+     formula: "(close_t - opening_range_high) / ATR20_t, NaN until the opening-range window has closed", available_at: "bar close after OR window", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: dist_or_low_atr, family: levels, impl: dist_or_level, params: {level: [low]},
+     formula: "(close_t - opening_range_low) / ATR20_t, NaN until the opening-range window has closed", available_at: "bar close after OR window", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: dist_vwap_atr, family: levels, impl: dist_vwap_atr,
+     formula: "(close_t - session VWAP_t) / ATR20_t ; VWAP from near-month futures volume (FUT-VOLUME) or an explicit VWAP column", available_at: "bar close", data_needed: [spot_1m, fut_volume], kind: numeric}
+  - {brick_id: dist_round_100, family: levels, impl: dist_round,
+     params: {step: [100]}, id_template: "dist_round_{step}",
+     formula: "(close_t - round(close_t / 100) * 100) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: dist_prev_poc, family: levels, impl: dist_prev_poc,
+     formula: "(close_t - previous session volume POC) / ATR20_t (FUT-VOLUME profile)", available_at: "bar close", data_needed: [spot_1m, fut_volume], kind: numeric}
+  - {brick_id: day_range_pos_so_far, family: levels, impl: day_range_pos_so_far,
+     formula: "(close_t - low_so_far) / (high_so_far - low_so_far)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  # ---------------------------------------------------------------- Volatility (5)
+  - {brick_id: rv_ratio, family: volatility, impl: rv_ratio,
+     formula: "SD(1-bar log returns, 10 bars) / SD(1-bar log returns, 50 bars)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: atr_pct_rank, family: volatility, impl: atr_pct_rank,
+     formula: "percentile rank of ATR20_t among the end-of-session ATR20 of the previous 60 sessions (prior days only)", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: vol_of_vol, family: volatility, impl: vol_of_vol,
+     formula: "SD(ATR20_i - ATR20_{i-1}, 20 bars) / ATR20_t", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: nr_k, family: volatility, impl: nr_k, params: {k: [4, 7]}, id_template: "nr_{k}",
+     formula: "1 if the previous session range is the narrowest of the last k sessions (known at this session's first bar)", available_at: "first bar close", data_needed: [spot_1m], kind: flag}
+  - {brick_id: bb_bandwidth_pct, family: volatility, impl: bb_bandwidth_pct,
+     formula: "percentile rank of Bollinger bandwidth (4 SD20 / SMA20) among the previous 100 bars", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  # ---------------------------------------------------------------- Time (8)
+  - {brick_id: slot, family: time, impl: slot,
+     formula: "0-based bar index inside the observed session grid", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: slot_group, family: time, impl: slot_group,
+     formula: "named-window code from era_calendar.yaml: 1 first_15m, 2 lunch_lull, 3 last_hour, 0 other", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: weekday, family: time, impl: weekday,
+     formula: "0 Monday .. 4 Friday", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: min_since_open, family: time, impl: min_since_open,
+     formula: "minutes from the observed first bar open to this bar close", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: min_to_close, family: time, impl: min_to_close,
+     formula: "minutes from this bar close to the observed last bar close of the grid", available_at: "bar close", data_needed: [spot_1m], kind: numeric}
+  - {brick_id: month_end, family: time, impl: month_end,
+     formula: "1 if calendar day >= 28", available_at: "bar close", data_needed: [spot_1m], kind: flag}
+  - {brick_id: month_start, family: time, impl: month_start,
+     formula: "1 if calendar day <= 3", available_at: "bar close", data_needed: [spot_1m], kind: flag}
+  - {brick_id: dte, family: time, impl: dte,
+     formula: "trading days to the next expiry from the data-derived expiry calendar (contracts.csv / expiry_date, R29)", available_at: "bar close", data_needed: [spot_1m, expiry_calendar], kind: numeric}
+  # ---------------------------------------------------------------- Volume / OI (6)
+  - {brick_id: rvol_slot, family: volume_oi, impl: rvol_slot,
+     formula: "volume_t / median(volume at the same slot over the previous 20 sessions); needs >= 50% non-zero prior bars (FUT-VOLUME)", available_at: "bar close", data_needed: [spot_1m, fut_volume], kind: numeric}
+  - {brick_id: vol_z, family: volume_oi, impl: vol_z,
+     formula: "(volume_t - mean20) / sd20 of volume (FUT-VOLUME)", available_at: "bar close", data_needed: [spot_1m, fut_volume], kind: numeric}
+  - {brick_id: oi_chg_pct, family: volume_oi, impl: oi_chg_pct,
+     formula: "100 * (OI_t / OI_{t-5} - 1) of the near-month future", available_at: "bar close", data_needed: [spot_1m, fut_oi], kind: numeric}
+  - {brick_id: price_oi_class, family: volume_oi, impl: price_oi_class,
+     formula: "1 long build-up (price up, OI up), 2 short build-up (down, up), 3 short covering (up, down), 4 long unwinding (down, down) over 5 bars", available_at: "bar close", data_needed: [spot_1m, fut_oi], kind: numeric}
+  - {brick_id: fut_basis, family: volume_oi, impl: fut_basis,
+     formula: "(future close_t - spot close_t) / ATR20_t", available_at: "bar close", data_needed: [spot_1m, fut_1m], kind: numeric}
+  - {brick_id: basis_chg, family: volume_oi, impl: basis_chg,
+     formula: "(basis_t - basis_{t-5}) / ATR20_t", available_at: "bar close", data_needed: [spot_1m, fut_1m], kind: numeric}
+  # ---------------------------------------------------------------- Options (9 ids, oi_wall_dist call/put)
+  - {brick_id: atm_iv, family: options, impl: atm_iv,
+     formula: "ATM implied volatility (iv_status == OK only) as-of available_from_ts", available_at: "max(bar close, available_from_ts)", data_needed: [spot_1m, iv_greeks_1m], kind: numeric}
+  - {brick_id: iv_chg_h, family: options, impl: iv_chg_h, params: {h: [5]}, id_template: "iv_chg_{h}",
+     formula: "atm_iv_t - atm_iv_{t-5}", available_at: "max(bar close, available_from_ts)", data_needed: [spot_1m, iv_greeks_1m], kind: numeric}
+  - {brick_id: skew, family: options, impl: skew,
+     formula: "put IV - call IV at equal OTM moneyness (iv_status == OK only)", available_at: "max(bar close, available_from_ts)", data_needed: [spot_1m, iv_greeks_1m], kind: numeric}
+  - {brick_id: pcr, family: options, impl: pcr,
+     formula: "whole-chain put OI / call OI from the chain snapshot known at bar close", available_at: "max(bar close, available_from_ts)", data_needed: [spot_1m, chain_1m], kind: numeric}
+  - {brick_id: oi_wall_dist, family: options, impl: oi_wall_dist, params: {side: [call, put]}, id_template: "oi_wall_dist_{side}",
+     formula: "(close_t - strike with the highest call (put) OI) / ATR20_t", available_at: "max(bar close, available_from_ts)", data_needed: [spot_1m, chain_1m], kind: numeric}
+  - {brick_id: max_pain_dist, family: options, impl: max_pain_dist,
+     formula: "(close_t - max-pain strike of the chain snapshot) / ATR20_t", available_at: "max(bar close, available_from_ts)", data_needed: [spot_1m, chain_1m], kind: numeric}
+  - {brick_id: atm_straddle_pct, family: options, impl: atm_straddle_pct,
+     formula: "100 * (ATM CE close + ATM PE close) / spot close (non-stale bars only)", available_at: "bar close", data_needed: [spot_1m, opt_1m], kind: numeric}
+  - {brick_id: premium_ret_h, family: options, impl: premium_ret_h, params: {h: [5]}, id_template: "premium_ret_{h}",
+     formula: "ATM straddle premium_t / premium_{t-5} - 1 (non-stale bars only)", available_at: "bar close", data_needed: [spot_1m, opt_1m], kind: numeric}
+  - {brick_id: spread_pct, family: options, impl: spread_pct,
+     formula: "(ask - bid) / mid of the ATM option from real Recorder quotes (half_spread_PROXY never used)", available_at: "quote timestamp <= bar close", data_needed: [spot_1m, recorder_quotes], kind: numeric}
+  # ---------------------------------------------------------------- Cross-Asset (5)
+  - {brick_id: nifty_ret_k, family: cross_asset, impl: cross_ret_k, params: {k: [5]}, id_template: "nifty_ret_{k}",
+     formula: "(NIFTY close_t - close_{t-5}) / NIFTY ATR20_t", available_at: "bar close", data_needed: [spot_1m, nifty_1m], kind: numeric}
+  - {brick_id: banks_breadth, family: cross_asset, impl: banks_breadth,
+     formula: "share of bank constituents (stock_1m) with close_t > session open", available_at: "bar close", data_needed: [spot_1m, stock_1m], kind: numeric}
+  - {brick_id: vix_chg, family: cross_asset, impl: vix_chg,
+     formula: "INDIAVIX close_t - close_{t-5}", available_at: "bar close", data_needed: [spot_1m, vix_1m], kind: numeric}
+  - {brick_id: usdinr_ret, family: cross_asset, impl: global_ret, params: {symbol: [USDINR]},
+     formula: "100 * log(USDINR close_t / close_{t-5})", available_at: "bar close", data_needed: [spot_1m, usdinr_1m], kind: numeric}
+  - {brick_id: giftnifty_gap, family: cross_asset, impl: giftnifty_gap,
+     formula: "100 * log(GIFT NIFTY last value before session open / NIFTY previous close)", available_at: "first bar close", data_needed: [spot_1m, giftnifty_1m], kind: numeric}
