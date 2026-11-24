@@ -1,0 +1,212 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bn-forensics.local/schemas/strategy_input_pack.schema.json",
+  "title": "strategy_input_pack.json (FILE-022, S4 App D + S5 O14, V3 additive 1.1)",
+  "schema_version": "1.0",
+  "description": "Accepts instance schema_version 1.0 and 1.1 (DEF-02). Version 1.1 requires exposure_summary, cost_model and backtest_bridge (Appendix F). validated_findings holds only Ω-A/Ω-B/Ω-C; Ω-A/Ω-B require COURT-CONFIRMED and Ω-C requires LEDGER-CONFIRMED.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "metadata", "validated_findings", "orthogonal_independent_effects",
+    "break_even_costs", "approach_verdicts_11a", "group_verdicts_11b", "graveyard_summary",
+    "hypothesis_backlog", "ledger_states", "open_data_tickets", "futility_certificate",
+    "must_carry_caveats"
+  ],
+  "properties": {
+    "schema_version": {"enum": ["1.0", "1.1"]},
+    "metadata": {
+      "type": "object",
+      "required": ["data_version", "run_id", "mode", "date_range", "usable_days"],
+      "properties": {
+        "data_version": {"$ref": "#/$defs/sha256"},
+        "run_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+        "mode": {"type": "string", "minLength": 1},
+        "date_range": {
+          "type": "object",
+          "required": ["from", "to"],
+          "properties": {"from": {"$ref": "#/$defs/date"}, "to": {"$ref": "#/$defs/date"}}
+        },
+        "usable_days": {"type": "integer", "minimum": 0},
+        "brain_hash": {"$ref": "#/$defs/sha256"},
+        "library_hash": {"$ref": "#/$defs/sha256"},
+        "prompts_hash": {"$ref": "#/$defs/sha256"},
+        "n_indep": {"type": "integer", "minimum": 0},
+        "novelty_score": {"type": ["number", "null"]},
+        "handoff_test": {"type": "string"},
+        "diagnosis_only": {"const": true}
+      }
+    },
+    "validated_findings": {"type": "array", "items": {"$ref": "#/$defs/finding"}},
+    "orthogonal_independent_effects": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["effect_id", "member_finding_ids"],
+        "properties": {
+          "effect_id": {"type": "string"},
+          "member_finding_ids": {"type": "array", "items": {"type": "string"}},
+          "representative": {"type": "string"}
+        }
+      }
+    },
+    "break_even_costs": {"type": "object"},
+    "approach_verdicts_11a": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["approach_id", "verdict"],
+        "properties": {
+          "approach_id": {"type": "string", "pattern": "^AP[0-9]{2}$"},
+          "verdict": {
+            "enum": [
+              "SUPPORTED FOR HYPOTHESIS", "CONTRADICTED", "INCONCLUSIVE", "N/A — DATA MISSING",
+              "N/A DEGRADED"
+            ]
+          }
+        }
+      }
+    },
+    "group_verdicts_11b": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["group", "verdict"],
+        "properties": {
+          "group": {"type": "string", "pattern": "^G([1-9]|10)$"},
+          "verdict": {"enum": ["SUPPORTED", "CONTRADICTED", "INCONCLUSIVE", "N/A"]}
+        }
+      }
+    },
+    "graveyard_summary": {"type": "object"},
+    "hypothesis_backlog": {"type": "array"},
+    "ledger_states": {"type": "array"},
+    "open_data_tickets": {"type": "array"},
+    "futility_certificate": {"type": ["object", "null"]},
+    "must_carry_caveats": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
+    "exposure_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["virgin_days", "exposed_days", "policy", "per_finding"],
+      "properties": {
+        "virgin_days": {"type": "integer", "minimum": 0},
+        "exposed_days": {"type": "integer", "minimum": 0},
+        "policy": {"enum": ["cap", "exclude", "ignore"]},
+        "per_finding": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["finding_id", "exposure"],
+            "properties": {
+              "finding_id": {"type": "string"},
+              "exposure": {"enum": ["VIRGIN-COURT", "EXPOSED-COURT", "LEDGER"]},
+              "exposed_share": {"type": ["number", "null"], "minimum": 0, "maximum": 1}
+            }
+          }
+        }
+      }
+    },
+    "cost_model": {
+      "type": "object",
+      "required": ["parameters", "worked_break_even"],
+      "properties": {
+        "parameters": {"type": "object"},
+        "worked_break_even": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["premium", "lots", "option_cost_pts"],
+            "properties": {
+              "premium": {"type": "number"},
+              "lots": {"type": "integer", "minimum": 1},
+              "lot_size": {"type": ["integer", "null"]},
+              "option_cost_pts": {"type": ["number", "null"]},
+              "underlying_cost_pts": {"type": ["number", "null"]}
+            }
+          }
+        },
+        "status": {"type": "string"}
+      }
+    },
+    "backtest_bridge": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "finding_id", "tag", "available_at", "cost_series", "break_even_pts", "deflated_lift",
+          "exposure", "grade", "must_carry_caveats"
+        ],
+        "properties": {
+          "finding_id": {"type": "string"},
+          "tag": {"type": "string", "pattern": "^f_[a-z0-9_]{1,22}$", "maxLength": 24},
+          "available_at": {"type": "string", "minLength": 1},
+          "cost_series": {"enum": ["underlying", "option", "option_buyer", "structure_only"]},
+          "break_even_pts": {"type": ["number", "null"]},
+          "deflated_lift": {"type": ["number", "null"]},
+          "exposure": {"enum": ["VIRGIN-COURT", "EXPOSED-COURT", "LEDGER"]},
+          "grade": {"enum": ["Ω-A", "Ω-B", "Ω-C"]},
+          "must_carry_caveats": {"type": "array", "items": {"type": "string"}}
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"schema_version": {"const": "1.1"}}, "required": ["schema_version"]},
+      "then": {"required": ["exposure_summary", "cost_model", "backtest_bridge"]}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "date": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"},
+    "finding": {
+      "type": "object",
+      "required": [
+        "finding_id", "card_id", "grade", "statement", "target", "horizon", "side",
+        "deflated_lift", "effective_n", "court", "ledger_state", "tradability_tag", "cost_series",
+        "must_carry_caveats"
+      ],
+      "properties": {
+        "finding_id": {"type": "string", "minLength": 1},
+        "card_id": {"type": "string", "minLength": 1},
+        "grade": {"enum": ["Ω-A", "Ω-B", "Ω-C"]},
+        "statement": {"type": "string", "minLength": 1},
+        "target": {"type": "string"},
+        "horizon": {"type": "integer", "minimum": 1},
+        "side": {"enum": ["continuation", "reversal", "both"]},
+        "deflated_lift": {"type": ["number", "null"]},
+        "lift_atr20": {"type": ["number", "null"]},
+        "effective_n": {"type": "integer", "minimum": 0},
+        "court": {
+          "type": ["object", "null"],
+          "properties": {
+            "verdict": {"enum": ["COURT-CONFIRMED"]},
+            "p": {"type": "number", "minimum": 0, "maximum": 1},
+            "alpha_k_over_K": {"type": "number"},
+            "B_court": {"type": "integer"},
+            "exposure": {"enum": ["VIRGIN-COURT", "EXPOSED-COURT"]},
+            "session_k": {"type": "integer", "minimum": 1}
+          }
+        },
+        "ledger_state": {"type": "string"},
+        "tradability_tag": {"enum": ["T1", "T2", "T3", "T?", "STRUCTURE-ONLY"]},
+        "cost_series": {"enum": ["underlying", "option", "option_buyer", "structure_only"]},
+        "independent_effect_id": {"type": ["string", "null"]},
+        "skeptic": {"type": "object"},
+        "labels": {"type": "array", "items": {"type": "string"}},
+        "must_carry_caveats": {"type": "array", "items": {"type": "string"}}
+      },
+      "allOf": [
+        {
+          "if": {"properties": {"grade": {"enum": ["Ω-A", "Ω-B"]}}},
+          "then": {"properties": {"court": {"type": "object", "required": ["verdict", "exposure"]}}}
+        },
+        {
+          "if": {"properties": {"grade": {"const": "Ω-C"}}},
+          "then": {"properties": {"ledger_state": {"const": "LEDGER-CONFIRMED"}}}
+        }
+      ]
+    }
+  }
+}
