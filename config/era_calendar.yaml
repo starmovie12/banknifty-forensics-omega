@@ -84,7 +84,7 @@ named_windows:
   first_15m: {anchor: open, start_min: 0, end_min: 15}
   lunch_lull: {anchor: clock, start: "11:30", end: "13:29"}
   last_hour: {anchor: close, start_min: 60, end_min: 0}
-  close_bar: {anchor: close, start_min: 1, end_min: 0}
+  close_bar: {anchor: last_bar}       # the last bar of the observed session grid
 
 # Opening ranges (AP14/AP15, Phase 2.4), minutes from the observed session open.
 opening_ranges:
