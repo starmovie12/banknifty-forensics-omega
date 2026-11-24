@@ -82,6 +82,8 @@ court:                                    # FR-11, §10.4 #2 #7 #9
     court_mde_ceiling_sd: 0.60            # PR-16
   lane_m_reserve: 5                       # PR-08
   exposure_majority: 0.50                 # R28: EXPOSED-COURT when > 50%
+  event_rate_reference: 0.25              # observed event-days per Court day (§10.4 #3 worked example)
+  court_frac_reference: 0.40              # Court share of usable days (FR-04)
   chunk_rows: 10000
 
 ledger:                                   # FR-13, §10.4 #4
