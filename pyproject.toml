@@ -88,6 +88,7 @@ ignore = [
     "RUF002",
     "RUF003",
     "SIM108",  # explicit if/else kept for statistical readability
+    "RUF046",  # explicit int() casts kept at numpy/JSON boundaries
 ]
 
 [tool.ruff.lint.per-file-ignores]
