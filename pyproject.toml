@@ -93,7 +93,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # FILE-024 runs FILE-034/FILE-037 as isolated `python3 -m` subprocesses (§8.1 Ω-S6).
 "src/bn_forensics/cli.py" = ["S603"]
-"tests/**" = ["S101", "S603"]
+"tests/**" = ["S101", "S603", "PT018"]  # compound asserts kept deliberate in acceptance tests
 
 [tool.ruff.lint.isort]
 known-first-party = ["bn_forensics"]
