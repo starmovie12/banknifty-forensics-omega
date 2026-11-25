@@ -267,14 +267,15 @@ def selftest_card() -> dict[str, Any]:
 
 def make_selftest_world(root: Path, cal: dict[str, Any], *, seed: int = 42, n_days: int = 450, start: dt.date = dt.date(2027, 1, 4),
                         bar_minutes: int = 3, event_day_rate: float = 0.25, effect_atr20: float = 0.8,
-                        underlying: str = "BANKNIFTY") -> SelftestWorld:
+                        underlying: str = "BANKNIFTY", structure: bool = True) -> SelftestWorld:
     """450 synthetic trading days of 1-minute spot bars (``updl`` store layout) with a planted edge.
 
     The tape has day-level volatility clustering, an intraday U-shaped volatility profile, a 1-minute
     bounce reversal and first-hour opening-drive persistence. On about ``event_day_rate`` of days the
     synthetic bricks ``feature3`` and ``feature7`` are both 1 on four analysis bars, and the next
     ``3`` analysis bars drift by ``effect_atr20`` x the median ATR20. Session grids come from
-    ``era_calendar.yaml``; synthetic dates are 2027+ (VIRGIN).
+    ``era_calendar.yaml``; synthetic dates are 2027+ (VIRGIN). ``structure=False`` gives a pure
+    white-noise tape (T-11 futility worlds).
     """
     rng = np.random.default_rng(seed)
     days: list[dt.date] = []
@@ -292,12 +293,15 @@ def make_selftest_world(root: Path, cal: dict[str, Any], *, seed: int = 42, n_da
         lv[i] = 0.9 * lv[i - 1] + rng.normal(0.0, 0.12)
     u = np.linspace(-1.0, 1.0, n1)
     sig = 26.0 * np.exp(lv)[:, None] * (1.0 + 0.35 * u ** 2)[None, :]
+    if not structure:
+        sig = np.full((nd, n1), 26.0)
+    reversal = 0.30 if structure else 0.0
     inc = np.empty((nd, n1))
     prev = np.zeros(nd)
     for t in range(n1):
-        inc[:, t] = sig[:, t] * z[:, t] - 0.30 * prev
+        inc[:, t] = sig[:, t] * z[:, t] - reversal * prev
         prev = inc[:, t]
-    drive = rng.normal(0.0, 6.0, nd)
+    drive = rng.normal(0.0, 6.0, nd) * (1.0 if structure else 0.0)
     first_hour = 60 // max(1, bar_minutes) * bar_minutes
     inc[:, : first_hour // 2] += drive[:, None]
     inc[:, first_hour // 2: first_hour] += 0.5 * drive[:, None]
@@ -532,7 +536,8 @@ class Chair:
             with acquire_locks(resources) as locks:
                 self.lock_mode = "o_excl" if any(getattr(lk, "mode", "flock") != "flock" for lk in locks) else "flock"
                 atomic_write_text(self.runs_root / "LATEST", self.run_id + "\n")
-                self.write_state()
+                if self.opts.command not in ("report", "ledger-tick"):
+                    self.write_state()
                 exit_code = self._pipeline()
                 mode_line = self.bundle.get("mode_line", mode_line)
         except PartialCheckpoint as exc:
@@ -560,7 +565,13 @@ class Chair:
                               "No finding from this run may be used.\n")
             self.write_state(exit_code=exit_code)
             self.say(mode_line)
-        except (LockContention, BnfError) as exc:
+        except LockContention as exc:
+            exit_code = EXIT_INPUT
+            self.state = "ABORT_INPUT_ERROR"
+            mode_line = f"ERROR (exit 3): {sanitize_text(str(exc), 300)}"
+            self.say(mode_line)
+            self.log = None
+        except BnfError as exc:
             exit_code = int(getattr(exc, "exit_code", EXIT_INPUT))
             if exit_code == EXIT_INVALID:
                 self.bundle["run_mode"] = "INVALID"
@@ -785,6 +796,10 @@ class Chair:
         self.done("Ω-S4")
         self.enter("Ω-S5")
         if docket["status"] != "FROZEN":
+            from bn_forensics.court import EVENT_LEDGER_FIELDS, VERDICT_FIELDS
+
+            write_csv(self.tables / "court_verdicts.csv", VERDICT_FIELDS, [])
+            write_csv(self.tables / "event_ledger.csv", EVENT_LEDGER_FIELDS, [])
             self.say(f"[Ω-S5] COURT POWER-DEFERRED: median event-days {docket['power_precheck']['median_event_days']:.1f}, no alpha spent")
             self.digest(5, ["[FACT] Court POWER-DEFERRED: no Court file opened, k unchanged, no alpha spent.", "[FACT] WAIT action added to next_actions.yaml."])
             self.done("Ω-S5")
@@ -887,14 +902,18 @@ class Chair:
         top3 = list(rank_pool(pres.pool)[:3])
         rows, events, ev_rows = [], {}, []
         court_frame: BarFrame | None = self.bundle.get("court_frame")
-        court_days = list(self.bundle["manifest_obj"].court_days)
         for entry in docket["cards"]:
             cid = entry["card_id"]
             cand = cands[cid]
             ev = pres.evaluated.get(cid)
             pg_res = ev.result if ev is not None else None
             v = verdicts.get(cid)
-            res = v.result if v is not None else None
+            # Court evidence when the session ran; otherwise (POWER-DEFERRED) the Playground numbers,
+            # so every registry row stays recomputable by Step F (FR-16).
+            if v is not None and v.result is not None and court_frame is not None:
+                res, frame, fctx, phase = v.result, court_frame, self.bundle["court_ctx"], "Ω-S5"
+            else:
+                res, frame, fctx, phase = pg_res, self.bundle["pg_frame"], self.bundle["pg_ctx"], "Ω-S3"
             target, h = entry["target"], int(entry["horizon"])
             rid = f"{cid}@{target}h{h}"
             dl = cand.deflated_lift
@@ -907,7 +926,7 @@ class Chair:
             overlap = max((jaccard(cand.event_days, t.event_days) for t in top3 if t.card_id != cid), default=0.0)
             pg_se = pg_res.se if pg_res is not None else float("nan")
             row = {
-                "ID": rid, "Phase": "Ω-S5", "Family_m": f"{str(cand.card.get('provenance', 'HUNT')).split(':')[-1]}/m={pres.m_playground}",
+                "ID": rid, "Phase": phase, "Family_m": f"{str(cand.card.get('provenance', 'HUNT')).split(':')[-1]}/m={pres.m_playground}",
                 "Label": ";".join(x for x in label if x), "Statement": f"[{cid}] " + sanitize_text(cand.card.get("hypothesis", ""), 200),
                 "Metric": f"{target} fixed-horizon outcome (ATR20)", "Horizon": h, "Side": cand.card.get("side", "both"),
                 "Event N": res.n_events if res else 0, "Effective N": res.effective_n if res else 0,
@@ -919,7 +938,8 @@ class Chair:
                 "SE_disc": pg_se, "Gate-adjusted MDE": gate_adjusted_mde(pg_se, float(q), max(1, len(docket["cards"]))) if math.isfinite(pg_se) else float("nan"),
                 "q_disc": min(1.0, pg_res.p_val * max(1, pres.m_playground)) if pg_res is not None and math.isfinite(pg_res.p_val) else float("nan"),
                 "p_val": v.p if v else float("nan"), "Discovery lift": pg_res.lift_atr if pg_res else float("nan"),
-                "Validation lift": res.lift_atr if res else float("nan"), "Stability": res.stability if res else "NOT RUN",
+                "Validation lift": res.lift_atr if (res is not None and v is not None) else float("nan"),
+                "Stability": res.stability if res else "NOT RUN",
                 "Outlier test": "see Skeptic re-test 4", "Skeptic verdict": "NOT RUN", "Evidence grade": "D",
                 "Tradability tag": tag, "Regime": self.bundle["xray"].era_tags.get(cid, "ERA-B-ONLY" if self._era_b_only() else "ERA-CONSISTENT"),
                 "Event-day hash": event_days_hash(ev_days), "Overlap with disc-top-3": round(overlap, 4),
@@ -928,17 +948,15 @@ class Chair:
                 "Burn count": int(docket["session"]) if v else 0, "Independent effect ID": "",
             }
             rows.append(row)
-            if res is not None and court_frame is not None:
+            if res is not None:
                 cc = self.bundle["compiled"][cid]
-                _, direction = cc.evaluate(self.bundle["court_ctx"])
+                _, direction = cc.evaluate(fctx)
+                spec = {"target": target, "horizon": h, "side": cand.card.get("side", "both"), "baseline": cand.card.get("baseline", "slot_matched")}
                 for i in res.event_index:
-                    ev_rows.append({"ID": rid, "kind": "event", "date": str(court_frame.days[court_frame.day_idx[i]]),
-                                    "minute": int(court_frame.minute[i]), "direction": float(direction[i]), "target": target,
-                                    "horizon": h, "side": cand.card.get("side", "both"), "baseline": cand.card.get("baseline", "slot_matched")})
-                ev_rows += [{"ID": rid, "kind": "day", "date": d, "minute": "", "direction": "", "target": target, "horizon": h,
-                             "side": cand.card.get("side", "both"), "baseline": cand.card.get("baseline", "slot_matched")} for d in court_days]
-                ev_rows += [{"ID": rid, "kind": "frame", "date": str(d), "minute": "", "direction": "", "target": target, "horizon": h,
-                             "side": cand.card.get("side", "both"), "baseline": cand.card.get("baseline", "slot_matched")} for d in court_frame.days]
+                    ev_rows.append({"ID": rid, "kind": "event", "date": str(frame.days[frame.day_idx[i]]),
+                                    "minute": int(frame.minute[i]), "direction": float(direction[i]), **spec})
+                for kind in ("day", "frame"):
+                    ev_rows += [{"ID": rid, "kind": kind, "date": str(d), "minute": "", "direction": "", **spec} for d in frame.days]
         return rows, events, ev_rows
 
     def _era_b_only(self) -> bool:
@@ -1166,7 +1184,7 @@ class Chair:
                          "recall_at_delta": nl_res.recall_at_delta if nl_res else {}},
             "n_star": {"mde_target_atr20": target_atr, "mde_target_sd": round(float(ns["mde_target_sd"]), 4),
                        "event_days_needed": int(ns["event_days_needed"]), "court_days_needed": int(ns["court_days_needed"])},
-            "cheapest_next_data": [{"ticket": t["ticket_id"], "expected_n_star_reduction": "UNKNOWN"} for t in tickets[:3]],
+            "cheapest_next_data": [{"ticket": t["ticket_id"], "expected_n_star_reduction": "n/a"} for t in tickets[:3]],
             "ledger": {"fwd_watch": int(counts["fwd_watch"]), "confirmed": int(counts["confirmed"]), "decayed": int(counts["decayed"]),
                        "registered_lifetime": int(counts["registered_lifetime"]), "M": int(counts["M"]),
                        "next_tick": str(self.bundle.get("ledger_next_tick", "PENDING-DATA"))},
