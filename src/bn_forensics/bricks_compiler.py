@@ -1481,6 +1481,18 @@ class CompiledCard:
                 "family": card.get("target", "T1"), "phase": phase, "approach_id": approach_id}
 
 
+_TARGET_MENU: tuple[str, ...] = ()
+
+
+def target_menu() -> tuple[str, ...]:
+    """Target ids of ``config/targets.yaml`` (the fixed-horizon outcome menu, §9.4)."""
+    global _TARGET_MENU
+    if not _TARGET_MENU:
+        doc = load_yaml(asset_dir("config") / "targets.yaml")
+        _TARGET_MENU = tuple(str(t.get("target_id") or t.get("id")) for t in doc["targets"])
+    return _TARGET_MENU
+
+
 def compile_card(card: dict[str, Any], lib: BrickLibrary, *, available: set[str], cal: dict[str, Any],
                  t7_enabled: bool = False, sklearn_ok: bool | None = None,
                  brick_leak_ctx: FeatureContext | None = None,
@@ -1499,6 +1511,9 @@ def compile_card(card: dict[str, Any], lib: BrickLibrary, *, available: set[str]
         return CompiledCard(card, STATUS_BOUNDARY, f"Diagnosis-Only Boundary violation ({bounds[0]})")
     if card["target"] == "T7" and not t7_enabled:
         return CompiledCard(card, STATUS_BOUNDARY, "T7 disabled (T7_enabled: false, CF-12, D-6)")
+    if card["target"] not in target_menu():
+        return CompiledCard(card, STATUS_INVALID, f"unknown target {card['target']!r}: not in config/targets.yaml "
+                            "(T9+ needs an accepted TARGET proposal, FR-21)")
     try:
         ast = parse_event(event)
         top = ast.kind == "call" and ast.value in ("DIR", "MODEL")
