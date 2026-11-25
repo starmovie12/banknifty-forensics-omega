@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bn-forensics.local/schemas/idea_card_v2.schema.json",
+  "title": "Idea Card v2 (FILE-017, S4 App A, K-021, K-023)",
+  "schema_version": "2.0",
+  "description": "RULE, MODEL and PROFILE cards for lanes AP, M, B and USER. Lane M cards must carry a mechanism block. $defs also hold the Generator proposal templates (S4 App E) and the Idea Ledger JSONL record (FILE-030), see DEF-08.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "card_id", "type", "lane", "provenance", "hypothesis", "event", "side",
+    "target", "horizons", "baseline", "cutoffs", "data_needed", "cost_series", "prior_weight",
+    "expected_sign"
+  ],
+  "properties": {
+    "schema_version": {"const": "2.0"},
+    "card_id": {"type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$"},
+    "type": {"enum": ["RULE", "MODEL", "PROFILE"]},
+    "lane": {"enum": ["AP", "M", "B", "USER"]},
+    "provenance": {"type": "string", "minLength": 1, "maxLength": 120},
+    "round": {"type": "integer", "minimum": 0},
+    "hypothesis": {"type": "string", "minLength": 5, "maxLength": 600},
+    "event": {"type": "string", "minLength": 1, "maxLength": 2000},
+    "side": {"enum": ["continuation", "reversal", "both"]},
+    "target": {"type": "string", "pattern": "^T[0-9]{1,2}([_A-Za-z0-9]{0,60})$"},
+    "horizons": {
+      "type": "array", "minItems": 1, "maxItems": 12, "uniqueItems": true,
+      "items": {"type": "integer", "minimum": 1, "maximum": 2000}
+    },
+    "baseline": {"enum": ["slot_matched", "other_slots_vol_matched"]},
+    "cutoffs": {"enum": ["discovery_frozen", "fold_local"]},
+    "data_needed": {
+      "type": "array", "maxItems": 20, "uniqueItems": true,
+      "items": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,64}(:[A-Za-z0-9_]{1,32})?$"}
+    },
+    "cost_series": {"enum": ["underlying", "option", "option_buyer", "structure_only"]},
+    "mechanism": {"$ref": "#/$defs/mechanism"},
+    "prior_weight": {"type": "number", "minimum": 0.5, "maximum": 2.0},
+    "expected_sign": {"enum": ["positive", "negative", "none"]},
+    "frozen_at": {"$ref": "#/$defs/ist_timestamp"},
+    "card_hash": {"$ref": "#/$defs/sha256"},
+    "data_version": {"$ref": "#/$defs/sha256"}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"lane": {"const": "M"}}, "required": ["lane"]},
+      "then": {"required": ["mechanism"]}
+    },
+    {
+      "if": {"properties": {"type": {"const": "MODEL"}}, "required": ["type"]},
+      "then": {"properties": {"event": {"pattern": "^MODEL\\("}, "cutoffs": {"const": "fold_local"}}}
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "ist_timestamp": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?\\+05:30$"
+    },
+    "mechanism": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["actors", "dose_variable", "expected_gradient", "negative_control", "falsifier"],
+      "properties": {
+        "actors": {"type": "string", "minLength": 1},
+        "dose_variable": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+        "expected_gradient": {"type": "string", "minLength": 1},
+        "negative_control": {"type": "string", "minLength": 1},
+        "falsifier": {"type": "string", "minLength": 1}
+      }
+    },
+    "proposal": {
+      "type": "object",
+      "required": ["schema_version", "proposal_type"],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "proposal_type": {"enum": ["BRICK", "TARGET", "PERSONA", "MECHANISM"]}
+      },
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "required": ["proposal_type", "brick", "formula", "available_at", "data_needed", "why", "leak_gate"],
+          "properties": {
+            "schema_version": {"const": "1.0"},
+            "proposal_type": {"const": "BRICK"},
+            "brick": {"type": "string", "pattern": "^[a-z][a-z0-9_]{1,63}$"},
+            "formula": {"type": "string", "minLength": 1, "maxLength": 400},
+            "available_at": {"type": "string", "minLength": 1},
+            "data_needed": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^[A-Za-z0-9_]{1,64}(:[A-Za-z0-9_]{1,32})?$"}},
+            "why": {"type": "string", "minLength": 1},
+            "leak_gate": {"enum": ["pending", "passed", "rejected"]},
+            "proposed_by": {"type": "string"}
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["proposal_type", "target", "metric", "boundary_check", "tag"],
+          "properties": {
+            "schema_version": {"const": "1.0"},
+            "proposal_type": {"const": "TARGET"},
+            "target": {"type": "string", "pattern": "^T(9|[1-9][0-9])_[a-z0-9_]{1,60}$"},
+            "metric": {"type": "string", "minLength": 1, "maxLength": 400},
+            "boundary_check": {"type": "string", "minLength": 1},
+            "tag": {"const": "STRUCTURE-ONLY"},
+            "proposed_by": {"type": "string"}
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["proposal_type", "persona", "distance_from_existing"],
+          "properties": {
+            "schema_version": {"const": "1.0"},
+            "proposal_type": {"const": "PERSONA"},
+            "persona": {"type": "string", "pattern": "^[A-Za-z][A-Za-z0-9-]{1,40}$"},
+            "distance_from_existing": {"type": "string", "minLength": 1},
+            "example_cards": {"type": "array", "items": {"type": "string"}},
+            "proposed_by": {"type": "string"}
+          }
+        },
+        {
+          "additionalProperties": false,
+          "required": ["proposal_type", "mechanism", "dose_variable", "negative_control"],
+          "properties": {
+            "schema_version": {"const": "1.0"},
+            "proposal_type": {"const": "MECHANISM"},
+            "mechanism": {"type": "string", "minLength": 1},
+            "dose_variable": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+            "negative_control": {"type": "string", "minLength": 1},
+            "proposed_by": {"type": "string"}
+          }
+        }
+      ]
+    },
+    "idea_ledger_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema_version", "m_lifetime", "card_id", "card_hash", "hunt_mode", "status",
+        "event_days_hash", "event_days_count", "deflated_lift", "timestamp_ist"
+      ],
+      "properties": {
+        "schema_version": {"const": "1.0"},
+        "m_lifetime": {"type": "integer", "minimum": 1},
+        "card_id": {"type": "string", "minLength": 1, "maxLength": 64},
+        "card_hash": {"$ref": "#/$defs/sha256"},
+        "hunt_mode": {"type": "string", "pattern": "^(H([1-9]|1[0-3])|BASELINE)$"},
+        "status": {"enum": ["EVALUATED", "DISCARDED", "REJECTED"]},
+        "event_days_hash": {"$ref": "#/$defs/sha256"},
+        "event_days_count": {"type": "integer", "minimum": 0},
+        "deflated_lift": {"type": ["number", "null"]},
+        "timestamp_ist": {"$ref": "#/$defs/ist_timestamp"},
+        "target": {"type": "string"},
+        "family": {"type": "string"},
+        "lift": {"type": ["number", "null"]},
+        "se": {"type": ["number", "null"]},
+        "sign": {"enum": [-1, 1]},
+        "cluster_id": {"type": "integer", "minimum": 0},
+        "reason": {"type": "string"},
+        "lane": {"enum": ["AP", "M", "B", "USER"]},
+        "prior_weight": {"type": "number"}
+      }
+    }
+  }
+}

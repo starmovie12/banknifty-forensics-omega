@@ -1,0 +1,90 @@
+# FILE-014 · config/targets.yaml · Target Menu T1-T8 (§9.4, S2 App C, S4 §2B.6, K-027)
+# Every target is a FIXED-HORIZON outcome measured after the event bar close (zero first-touch,
+# zero hold/exit logic: NG-1, NG-2). Units: ATR20 of the event bar unless stated.
+schema_version: "1.0"
+targets:
+  - id: T1
+    name: "Forward return"
+    metric: "fwd_return"
+    formula: "(close_{t+h} - close_t) / ATR20_t ; hit-rate lift in pp of 1[close_{t+h} > close_t]"
+    units: ["points", "ATR20", "pp"]
+    mode: "signed"
+    tradability_rule: "T1/T2/T3/T? from abs(deflated_lift) vs underlying_cost_pts (cost_series default option_buyer)"
+    structure_only: false
+    enabled: true
+    default_cost_series: "option_buyer"
+  - id: T2
+    name: "Forward abs(return)"
+    metric: "fwd_abs_return"
+    formula: "abs(close_{t+h} - close_t) / ATR20_t"
+    units: ["ATR20"]
+    mode: "abs"
+    tradability_rule: "STRUCTURE-ONLY"
+    structure_only: true
+    enabled: true
+    default_cost_series: "structure_only"
+  - id: T3
+    name: "Excursion quantiles"
+    metric: "excursion_asymmetry"
+    formula: "up_exc = (max(high_{t+1..t+h}) - close_t)/ATR20_t ; down_exc = (close_t - min(low_{t+1..t+h}))/ATR20_t ; tested metric = up_exc - down_exc ; report p50/p75/p90/p95 of each separately"
+    units: ["ATR20"]
+    mode: "custom"
+    quantiles: [0.50, 0.75, 0.90, 0.95]
+    tradability_rule: "STRUCTURE-ONLY"
+    structure_only: true
+    enabled: true
+    default_cost_series: "structure_only"
+  - id: T4
+    name: "Expansion probability"
+    metric: "expansion_prob"
+    formula: "1[(max(high_{t+1..t+h}) - min(low_{t+1..t+h})) >= x * ATR20_t] ; tested x = 1.0, reported x in {0.5, 1.0, 1.5, 2.0, 3.0}"
+    units: ["pp"]
+    mode: "custom"
+    x_grid: [0.5, 1.0, 1.5, 2.0, 3.0]
+    tested_x: 1.0
+    tradability_rule: "STRUCTURE-ONLY"
+    structure_only: true
+    enabled: true
+    default_cost_series: "structure_only"
+  - id: T5
+    name: "Forward vol change"
+    metric: "fwd_vol_change"
+    formula: "log(RV_{t+1..t+h} / RV_{t-h+1..t}) with RV = sqrt(sum(log-return^2))"
+    units: ["log-ratio"]
+    mode: "custom"
+    tradability_rule: "STRUCTURE-ONLY"
+    structure_only: true
+    enabled: true
+    default_cost_series: "structure_only"
+  - id: T6
+    name: "Premium response"
+    metric: "premium_return"
+    formula: "(ATM premium_{t+h} - ATM premium_t) / ATM premium_t, reported beside spot move and IV change"
+    units: ["%", "option points"]
+    mode: "custom"
+    data_needed: ["opt_1m"]
+    tradability_rule: "T1/T2/T3/T? from abs(deflated_lift) vs option_cost_pts"
+    structure_only: false
+    enabled: true
+    default_cost_series: "option"
+  - id: T7
+    name: "Window extreme location"
+    metric: "extreme_location"
+    formula: "argmax/argmin bar index of close inside the fixed next-h-bar window"
+    units: ["bars"]
+    mode: "custom"
+    tradability_rule: "STRUCTURE-ONLY if enabled"
+    structure_only: true
+    enabled: false                     # T7_enabled: false (CF-12, D-6, A-6)
+    default_cost_series: "structure_only"
+  - id: T8
+    name: "Overnight / gap outcome"
+    metric: "overnight_return"
+    formula: "(open_{D+1} - close_D) / ATR20 at the day's last bar ; gap-fill return = (close_{D+1, h bars} - open_{D+1}) / ATR20"
+    units: ["points", "ATR20"]
+    mode: "signed"
+    tradability_rule: "T1/T2/T3/T? vs underlying_cost_pts (cost_series default option_buyer)"
+    structure_only: false
+    enabled: true
+    default_cost_series: "option_buyer"
+proposal_rule: "T9+ only through proposals/ (TARGET template), boundary-checked, tagged STRUCTURE-ONLY (FR-21)"

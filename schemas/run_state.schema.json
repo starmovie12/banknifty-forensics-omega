@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bn-forensics.local/schemas/run_state.schema.json",
+  "title": "Chair run_state.json (FILE-020, S4 App D + S5 Omega extensions)",
+  "schema_version": "1.0",
+  "description": "Every key of the PRD §10.2 example is required. Optional keys hold NFR-09 deliverable digests and §8.3 resume data (DEF-09).",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "stage", "prompt_version", "model_id", "brain_hash", "prompts_hash",
+    "library_hash", "data_version", "mode", "court_session_k", "m_playground_total", "budget",
+    "env", "open_tickets", "row_ledger_ok", "tripwires", "digests"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "stage": {"type": "string", "pattern": "^(INIT|Ω-S[0-9])$"},
+    "prompt_version": {"type": "string", "minLength": 1},
+    "model_id": {"type": "string", "minLength": 1},
+    "brain_hash": {"$ref": "#/$defs/sha256"},
+    "prompts_hash": {"$ref": "#/$defs/sha256"},
+    "library_hash": {"$ref": "#/$defs/sha256"},
+    "data_version": {"oneOf": [{"$ref": "#/$defs/sha256"}, {"const": "UNSET"}]},
+    "mode": {"enum": ["STANDARD", "SCOUT", "INVALID", "PARTIAL", "DEGRADED"]},
+    "court_session_k": {"type": "integer", "minimum": 0},
+    "m_playground_total": {"type": "integer", "minimum": 0},
+    "budget": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_wall_min", "max_ideas", "used_wall_min", "used_ideas"],
+      "properties": {
+        "max_wall_min": {"type": "number", "minimum": 0},
+        "max_ideas": {"type": "integer", "minimum": 0},
+        "used_wall_min": {"type": "number", "minimum": 0},
+        "used_ideas": {"type": "integer", "minimum": 0},
+        "token_cap": {"type": ["integer", "null"], "minimum": 0},
+        "usd_cap": {"type": ["number", "null"], "minimum": 0},
+        "tokens_used": {"type": "integer", "minimum": 0},
+        "cost_usd": {"type": "number", "minimum": 0}
+      }
+    },
+    "env": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["python", "profile", "lock_mode"],
+      "properties": {
+        "python": {"type": "string"},
+        "profile": {"enum": ["full", "lite"]},
+        "lock_mode": {"enum": ["flock", "o_excl", "none"]},
+        "pandas": {"type": "string"},
+        "numpy": {"type": "string"},
+        "sklearn": {"type": "string"},
+        "run_env": {"type": "string"}
+      }
+    },
+    "open_tickets": {"type": "array", "items": {"type": "string", "pattern": "^D-[0-9]{4,6}$"}},
+    "row_ledger_ok": {"type": "boolean"},
+    "tripwires": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["tripwire_id", "severity", "stage", "action_taken"],
+        "properties": {
+          "tripwire_id": {"type": "string", "minLength": 1},
+          "severity": {"enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW"]},
+          "stage": {"type": "string"},
+          "action_taken": {"enum": ["MODE_INVALID", "PARTIAL", "LOGGED", "DEMOTED"]},
+          "detail": {"type": "string"}
+        }
+      }
+    },
+    "digests": {"type": "array", "items": {"type": "string", "pattern": "^digests/S[0-9]\\.md$"}},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+    "state": {
+      "enum": [
+        "INIT", "INTAKE_QUARANTINE", "SPLIT_SEAL", "NULL_LAB_AUDIT", "PLAYGROUND_HUNT",
+        "DOCKET_FREEZE", "COURT_SESSION", "SKEPTIC_VETO_GRADE", "LEDGER_INIT_TICK",
+        "FUTILITY_AND_REPORT", "PARTIAL_CHECKPOINT", "ABORT_INPUT_ERROR", "INVALID_PIPELINE",
+        "COMPLETE_WITH_GAPS", "COMPLETE"
+      ]
+    },
+    "exit_code": {"enum": [0, 2, 3, 4, 5]},
+    "seed": {"type": "integer"},
+    "created_ist": {"type": "string"},
+    "updated_ist": {"type": "string"},
+    "stages_completed": {"type": "array", "items": {"type": "string", "pattern": "^Ω-S[0-9]$"}},
+    "resume_from": {"type": ["string", "null"]},
+    "partial_reason": {"type": ["string", "null"]},
+    "data_gaps": {"type": "array", "items": {"type": "string"}},
+    "deliverables": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/sha256"}
+    },
+    "paths": {"type": "object", "additionalProperties": {"type": "string"}},
+    "split": {"type": "object"},
+    "null_lab": {"type": "object"},
+    "court": {"type": "object"},
+    "ledger": {"type": "object"},
+    "playground": {"type": "object"},
+    "telemetry": {"type": "object"},
+    "lineage": {"type": ["string", "null"]},
+    "config_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}

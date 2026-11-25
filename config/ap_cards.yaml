@@ -1,0 +1,339 @@
+# FILE-015 · config/ap_cards.yaml · Baseline Lane AP01-AP36 (§9.2, S1/S4 §2A, K-019, K-020)
+# Every approach is an EVENT DEFINITION AT BAR CLOSE (R8), never a trading strategy.
+# Directional events are split into continuation (-C) and reversal (-R) cards.
+# Each card below is merged over `card_defaults` and must validate as an Idea Card v2 (FILE-017).
+# All percentile/tercile cut-offs are discovery-frozen on Playground days (FILE-029).
+# AP32/AP33 are roll-ups and add 0 tests. lane AP, prior_weight 1.0 (floor, not ceiling).
+schema_version: "1.0"
+library_id: "bnf-ap-cards-v3.0.0"
+groups:
+  G1: "Options positioning"
+  G2: "Option order flow"
+  G3: "Implied volatility & decay"
+  G4: "Day-type & regime"
+  G5: "Multi-timeframe"
+  G6: "Opening range, levels & breakouts"
+  G7: "Volume & open interest"
+  G8: "Classic indicators"
+  G9: "Style roll-ups"
+  G10: "Time windows & calendar"
+card_defaults:
+  schema_version: "2.0"
+  type: RULE
+  lane: AP
+  round: 0
+  side: both
+  target: T1
+  horizons: [1, 3, 5, 10, 20]
+  baseline: slot_matched
+  cutoffs: discovery_frozen
+  data_needed: [spot_1m]
+  cost_series: option_buyer
+  prior_weight: 1.0
+  expected_sign: none
+approaches:
+  - approach_id: AP01
+    group: G1
+    name: "Max-OI wall & max-pain magnet"
+    phase: "4.9"
+    data_needed_text: "Multi-strike OI at common timestamps"
+    cards:
+      - {card_id: AP01-WALLC, hypothesis: "Closes within 0.5 ATR20 of the highest-call-OI strike stall more than the slot baseline", event: "lte(abs(oi_wall_dist_call), 0.5)", target: T2, horizons: [3, 5, 10], data_needed: [spot_1m, chain_1m], cost_series: structure_only}
+      - {card_id: AP01-WALLP, hypothesis: "Closes within 0.5 ATR20 of the highest-put-OI strike stall more than the slot baseline", event: "lte(abs(oi_wall_dist_put), 0.5)", target: T2, horizons: [3, 5, 10], data_needed: [spot_1m, chain_1m], cost_series: structure_only}
+      - {card_id: AP01-PAIN, hypothesis: "Closes within 0.5 ATR20 of the max-pain strike behave differently from the slot baseline", event: "lte(abs(max_pain_dist), 0.5)", target: T2, horizons: [3, 5, 10], data_needed: [spot_1m, chain_1m], cost_series: structure_only}
+  - approach_id: AP02
+    group: G1
+    name: "PCR tilt"
+    phase: "4.9"
+    data_needed_text: "Multi-strike OI at common timestamps"
+    cards:
+      - {card_id: AP02-PCRHI, hypothesis: "Top discovery-tercile whole-chain PCR changes the forward return", event: "eq(tercile(pcr), 3)", data_needed: [spot_1m, chain_1m]}
+      - {card_id: AP02-PCRLO, hypothesis: "Bottom discovery-tercile whole-chain PCR changes the forward return", event: "eq(tercile(pcr), 1)", data_needed: [spot_1m, chain_1m]}
+  - approach_id: AP03
+    group: G1
+    name: "Gamma-exposure (GEX) regime"
+    phase: "4.2, 4.9"
+    data_needed_text: "Signed dealer-positioning or GEX column (gex_proxy_PROXY / gamma_flip_PROXY are PROXY only)"
+    cards:
+      - {card_id: AP03-GEX, hypothesis: "Positive signed dealer gamma lowers forward absolute return", event: "gt(gex_signed, 0)", target: T2, horizons: [5, 10, 20], data_needed: [spot_1m, dealer_gex_signed], cost_series: structure_only}
+  - approach_id: AP04
+    group: G2
+    name: "Option order-flow imbalance & unusual volume"
+    phase: "3.3, 4.4"
+    data_needed_text: "Tick, L2, bid-ask size or trade-side columns + option volume"
+    cards:
+      - {card_id: AP04-FLOW, hypothesis: "Top-decile signed aggressor imbalance precedes underlying continuation", event: "q90(order_flow_imbalance)", data_needed: [spot_1m, trade_side_flow, opt_1m]}
+  - approach_id: AP05
+    group: G3
+    name: "IV skew & IV-shift reaction"
+    phase: "4.5"
+    data_needed_text: "IV column, or option chain + user rate/dividend"
+    cards:
+      - {card_id: AP05-SKEWHI, hypothesis: "Top-decile put-minus-call skew changes the forward return", event: "q90(skew)", data_needed: [spot_1m, iv_greeks_1m]}
+      - {card_id: AP05-SKEWLO, hypothesis: "Bottom-decile put-minus-call skew changes the forward return", event: "q10(skew)", data_needed: [spot_1m, iv_greeks_1m]}
+      - {card_id: AP05-IVSHIFT, hypothesis: "Top-decile 5-bar ATM IV rise is followed by larger absolute moves", event: "q90(iv_chg_5)", target: T2, horizons: [3, 5, 10], data_needed: [spot_1m, iv_greeks_1m], cost_series: structure_only}
+  - approach_id: AP06
+    group: G3
+    name: "Volatility risk premium (IV vs RV)"
+    phase: "4.5"
+    data_needed_text: "Option premiums, underlying, and expiry column or user calendar (unit = expiry cycle)"
+    cards:
+      - {card_id: AP06-VRP, hypothesis: "Top-decile ATM straddle premium is followed by smaller realised moves than implied", event: "q90(atm_straddle_pct)", target: T2, horizons: [10, 20], data_needed: [spot_1m, opt_1m, expiry_calendar], cost_series: structure_only}
+  - approach_id: AP07
+    group: G3
+    name: "Theta-decay asymmetry & expiry pinning"
+    phase: "4.3, 4.8"
+    data_needed_text: "Option premiums and expiry column or user calendar"
+    cards:
+      - {card_id: AP07-PIN, hypothesis: "On expiry day closes near 100-multiples stay pinned", event: "AND(eq(dte, 0), lte(abs(dist_round_100), 0.1))", target: T2, horizons: [3, 5, 10], data_needed: [spot_1m, opt_1m, expiry_calendar], cost_series: structure_only}
+      - {card_id: AP07-DECAY, hypothesis: "Near-expiry low-movement bars carry premium decay", event: "AND(lte(dte, 1), q25(range_atr))", target: T6, horizons: [5, 10], data_needed: [spot_1m, opt_1m, expiry_calendar], cost_series: option}
+  - approach_id: AP08
+    group: G4
+    name: "Early trend-day vs range-day classifier"
+    phase: "6.3, 7.1(d)"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP08-CP10-C, hypothesis: "A strong move by the 10:00 checkpoint continues after it", event: "DIR(AND(at_checkpoint(cp_1000), gt(day_ret_so_far, 1.0)), AND(at_checkpoint(cp_1000), lt(day_ret_so_far, -1.0)))", side: continuation, horizons: [5, 10, 20]}
+      - {card_id: AP08-CP10-R, hypothesis: "A strong move by the 10:00 checkpoint reverses after it", event: "DIR(AND(at_checkpoint(cp_1000), gt(day_ret_so_far, 1.0)), AND(at_checkpoint(cp_1000), lt(day_ret_so_far, -1.0)))", side: reversal, horizons: [5, 10, 20]}
+  - approach_id: AP09
+    group: G4
+    name: "Compression-to-expansion (NR, inside bar, squeeze)"
+    phase: "1.7, 1.8, 7.1(a), 7.1(h)"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP09-BBSQ, hypothesis: "Lowest-decile Bollinger bandwidth raises expansion probability", event: "q10(bb_bandwidth_pct)", target: T4, horizons: [5, 10, 20], cost_series: structure_only}
+      - {card_id: AP09-NR7, hypothesis: "An NR7 previous session raises expansion probability early in the session", event: "AND(eq(nr_7, 1), eq(slot, 0))", target: T4, horizons: [5, 10, 20], cost_series: structure_only}
+      - {card_id: AP09-SMALL3, hypothesis: "Three consecutive small bars raise expansion probability", event: "AND(q25(range_atr), q25(lag(range_atr, 1)), q25(lag(range_atr, 2)))", target: T4, horizons: [3, 5, 10], cost_series: structure_only}
+  - approach_id: AP10
+    group: G4
+    name: "Chop / efficiency-ratio regime filter"
+    phase: "6.5"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP10-ORBHI-C, hypothesis: "Opening-range breakouts continue more in the top efficiency-ratio tercile", event: "DIR(AND(eq(tercile(er_20), 3), first_in_day(gt(dist_or_high_atr, 0))), AND(eq(tercile(er_20), 3), first_in_day(lt(dist_or_low_atr, 0))))", side: continuation}
+      - {card_id: AP10-ORBLO-C, hypothesis: "Opening-range breakouts continue less in the bottom efficiency-ratio tercile", event: "DIR(AND(eq(tercile(er_20), 1), first_in_day(gt(dist_or_high_atr, 0))), AND(eq(tercile(er_20), 1), first_in_day(lt(dist_or_low_atr, 0))))", side: continuation}
+  - approach_id: AP11
+    group: G4
+    name: "Expiry-day vs non-expiry-day split"
+    phase: "4.8, 5.2, 6.1"
+    data_needed_text: "Expiry column or user calendar"
+    cards:
+      - {card_id: AP11-EXPABS, hypothesis: "Expiry days have different forward absolute returns than other days", event: "eq(dte, 0)", target: T2, horizons: [3, 5, 10], data_needed: [spot_1m, expiry_calendar], cost_series: structure_only}
+      - {card_id: AP11-EXPRET, hypothesis: "Expiry days have a directional forward-return lift", event: "eq(dte, 0)", horizons: [3, 5, 10], data_needed: [spot_1m, expiry_calendar]}
+  - approach_id: AP12
+    group: G5
+    name: "Multi-timeframe direction alignment"
+    phase: "1.9, 7.1(a)"
+    data_needed_text: "Base bar <= 5 min"
+    cards:
+      - {card_id: AP12-MTF-C, hypothesis: "Aligned 1/5/10-bar directions continue", event: "DIR(AND(gt(ret_1, 0), gt(ret_5, 0), gt(ret_10, 0)), AND(lt(ret_1, 0), lt(ret_5, 0), lt(ret_10, 0)))", side: continuation}
+      - {card_id: AP12-MTF-R, hypothesis: "Aligned 1/5/10-bar directions reverse", event: "DIR(AND(gt(ret_1, 0), gt(ret_5, 0), gt(ret_10, 0)), AND(lt(ret_1, 0), lt(ret_5, 0), lt(ret_10, 0)))", side: reversal}
+  - approach_id: AP13
+    group: G5
+    name: "Higher-TF bias + lower-TF pullback"
+    phase: "2.5, 7.1(c)"
+    data_needed_text: "Base bar <= 5 min"
+    cards:
+      - {card_id: AP13-PULL-C, hypothesis: "A pullback against a top-tercile-efficiency EMA trend resumes the trend", event: "DIR(AND(gt(ema_slope, 0), lt(dist_ema_atr, 0), eq(tercile(er_20), 3)), AND(lt(ema_slope, 0), gt(dist_ema_atr, 0), eq(tercile(er_20), 3)))", side: continuation}
+  - approach_id: AP14
+    group: G6
+    name: "Opening range breakout (ORB)"
+    phase: "2.4, 7.1(c)"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP14-ORB-C, hypothesis: "The first close beyond the 30-minute opening range continues", event: "DIR(first_in_day(gt(dist_or_high_atr, 0)), first_in_day(lt(dist_or_low_atr, 0)))", side: continuation}
+      - {card_id: AP14-ORB-R, hypothesis: "The first close beyond the 30-minute opening range reverses", event: "DIR(first_in_day(gt(dist_or_high_atr, 0)), first_in_day(lt(dist_or_low_atr, 0)))", side: reversal}
+  - approach_id: AP15
+    group: G6
+    name: "Opening range failure"
+    phase: "2.4"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP15-ORF-C, hypothesis: "A close back inside the opening range within 3 bars of a break continues in the re-entry direction", event: "DIR(A_then_B_within(lt(dist_or_low_atr, 0), gte(dist_or_low_atr, 0), 3), A_then_B_within(gt(dist_or_high_atr, 0), lte(dist_or_high_atr, 0), 3))", side: continuation}
+  - approach_id: AP16
+    group: G6
+    name: "Gap-and-go vs gap-fill"
+    phase: "1.6, 7.1(b)"
+    data_needed_text: "Intraday bars with previous close"
+    cards:
+      - {card_id: AP16-ALIGN-C, hypothesis: "A gap whose first 15 minutes move with it continues to the close", event: "DIR(AND(at_checkpoint(cp_0930), gt(gap_atr, 0), gt(day_ret_so_far, 0)), AND(at_checkpoint(cp_0930), lt(gap_atr, 0), lt(day_ret_so_far, 0)))", side: continuation, horizons: [5, 10, 20]}
+      - {card_id: AP16-OPPOSE-C, hypothesis: "A gap whose first 15 minutes move against it continues in the first-15m direction", event: "DIR(AND(at_checkpoint(cp_0930), lt(gap_atr, 0), gt(day_ret_so_far, 0)), AND(at_checkpoint(cp_0930), gt(gap_atr, 0), lt(day_ret_so_far, 0)))", side: continuation, horizons: [5, 10, 20]}
+  - approach_id: AP17
+    group: G6
+    name: "Previous-day high/low breakout"
+    phase: "2.4, 2.6"
+    data_needed_text: "Intraday bars (>= 2 sessions)"
+    cards:
+      - {card_id: AP17-PDH-C, hypothesis: "The first close beyond the previous session high/low continues", event: "DIR(first_in_day(gt(dist_pdh_atr, 0)), first_in_day(lt(dist_pdl_atr, 0)))", side: continuation}
+      - {card_id: AP17-PDH-R, hypothesis: "The first close beyond the previous session high/low reverses", event: "DIR(first_in_day(gt(dist_pdh_atr, 0)), first_in_day(lt(dist_pdl_atr, 0)))", side: reversal}
+  - approach_id: AP18
+    group: G6
+    name: "Previous-day high/low sweep-and-reject"
+    phase: "2.4, 2.6"
+    data_needed_text: "Intraday bars (>= 2 sessions)"
+    cards:
+      - {card_id: AP18-SWEEP-C, hypothesis: "A bar that trades beyond the previous session extreme but closes back inside continues in the rejection direction", event: "DIR(AND(lt(dist_pdl_atr_x, 0), gte(dist_pdl_atr, 0)), AND(gt(dist_pdh_atr_x, 0), lte(dist_pdh_atr, 0)))", side: continuation}
+  - approach_id: AP19
+    group: G6
+    name: "VWAP reclaim, rejection & reversion"
+    phase: "2.6, 7.1(f)"
+    data_needed_text: "Usable volume (>= 50% non-zero bars) or explicit VWAP column; index has no volume -> near-month futures volume labelled FUT-VOLUME"
+    cards:
+      - {card_id: AP19-VDEV-R, hypothesis: "Extreme-decile distance from VWAP reverts", event: "DIR(q90(dist_vwap_atr), q10(dist_vwap_atr))", side: reversal, data_needed: [spot_1m, fut_volume]}
+      - {card_id: AP19-VCROSS-C, hypothesis: "A VWAP cross continues in the cross direction", event: "DIR(cross_above(dist_vwap_atr, 0), cross_below(dist_vwap_atr, 0))", side: continuation, data_needed: [spot_1m, fut_volume]}
+  - approach_id: AP20
+    group: G6
+    name: "N-bar breakout (Donchian / Turtle)"
+    phase: "2.5, 7.1(c)"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP20-N10-C, hypothesis: "A new 10-bar closing extreme continues", event: "DIR(eq(nbar_extreme_10, 1), eq(nbar_extreme_10, -1))", side: continuation}
+      - {card_id: AP20-N10-R, hypothesis: "A new 10-bar closing extreme reverses", event: "DIR(eq(nbar_extreme_10, 1), eq(nbar_extreme_10, -1))", side: reversal}
+      - {card_id: AP20-N20-C, hypothesis: "A new 20-bar closing extreme continues", event: "DIR(eq(nbar_extreme_20, 1), eq(nbar_extreme_20, -1))", side: continuation}
+      - {card_id: AP20-N20-R, hypothesis: "A new 20-bar closing extreme reverses", event: "DIR(eq(nbar_extreme_20, 1), eq(nbar_extreme_20, -1))", side: reversal}
+      - {card_id: AP20-N50-C, hypothesis: "A new 50-bar closing extreme continues", event: "DIR(eq(nbar_extreme_50, 1), eq(nbar_extreme_50, -1))", side: continuation}
+      - {card_id: AP20-N50-R, hypothesis: "A new 50-bar closing extreme reverses", event: "DIR(eq(nbar_extreme_50, 1), eq(nbar_extreme_50, -1))", side: reversal}
+  - approach_id: AP21
+    group: G6
+    name: "Fibonacci pullback & round-number levels"
+    phase: "1.10, 2.5, 2.6"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP21-ROUND, hypothesis: "Closes within 0.1 ATR20 of a 100-multiple stall more than the slot baseline", event: "lte(abs(dist_round_100), 0.1)", target: T2, horizons: [1, 3, 5, 10], cost_series: structure_only}
+  - approach_id: AP22
+    group: G6
+    name: "Candlestick reversal patterns"
+    phase: "1.3, 1.7, 7.1(a)"
+    data_needed_text: "OHLC bars"
+    cards:
+      - {card_id: AP22-HAMMER, hypothesis: "Hammer-like bars (long lower wick, small body) change the forward return", event: "AND(q10(wick_ratio), q25(body_frac))", horizons: [1, 3, 5, 10]}
+      - {card_id: AP22-STAR, hypothesis: "Shooting-star-like bars (long upper wick, small body) change the forward return", event: "AND(q90(wick_ratio), q25(body_frac))", horizons: [1, 3, 5, 10]}
+      - {card_id: AP22-MARU-C, hypothesis: "Marubozu-like bars continue", event: "DIR(AND(q90(body_frac), gt(ret_1, 0)), AND(q90(body_frac), lt(ret_1, 0)))", side: continuation, horizons: [1, 3, 5, 10]}
+      - {card_id: AP22-MARU-R, hypothesis: "Marubozu-like bars reverse", event: "DIR(AND(q90(body_frac), gt(ret_1, 0)), AND(q90(body_frac), lt(ret_1, 0)))", side: reversal, horizons: [1, 3, 5, 10]}
+      - {card_id: AP22-DOJI, hypothesis: "Doji-like bars precede different absolute moves", event: "q10(body_frac)", target: T2, horizons: [1, 3, 5, 10], cost_series: structure_only}
+      - {card_id: AP22-BIG-C, hypothesis: "Top-decile range bars continue", event: "DIR(AND(q90(range_atr), gt(ret_1, 0)), AND(q90(range_atr), lt(ret_1, 0)))", side: continuation, horizons: [1, 3, 5, 10]}
+      - {card_id: AP22-BIG-R, hypothesis: "Top-decile range bars reverse", event: "DIR(AND(q90(range_atr), gt(ret_1, 0)), AND(q90(range_atr), lt(ret_1, 0)))", side: reversal, horizons: [1, 3, 5, 10]}
+  - approach_id: AP23
+    group: G7
+    name: "RVOL-spike breakout continuation"
+    phase: "3.3, 3.6, 7.1(e)"
+    data_needed_text: "Usable volume (>= 50% non-zero bars)"
+    cards:
+      - {card_id: AP23-RVOL-C, hypothesis: "A p95-RVOL bar closing at a 20-bar extreme continues", event: "DIR(AND(q95(rvol_slot), eq(nbar_extreme_20, 1)), AND(q95(rvol_slot), eq(nbar_extreme_20, -1)))", side: continuation, data_needed: [spot_1m, fut_volume]}
+  - approach_id: AP24
+    group: G7
+    name: "Volume absorption & climax reversal"
+    phase: "3.4, 3.5"
+    data_needed_text: "Usable volume"
+    cards:
+      - {card_id: AP24-ABSORB, hypothesis: "High RVOL with a small range (absorption) changes the next move", event: "AND(q95(rvol_slot), q25(range_atr))", data_needed: [spot_1m, fut_volume]}
+      - {card_id: AP24-CLIMAX-R, hypothesis: "High RVOL with a top-5% range (climax) reverses", event: "DIR(AND(q95(rvol_slot), q95(range_atr), gt(ret_1, 0)), AND(q95(rvol_slot), q95(range_atr), lt(ret_1, 0)))", side: reversal, data_needed: [spot_1m, fut_volume]}
+  - approach_id: AP25
+    group: G7
+    name: "Price-OI build-up classes"
+    phase: "3.8, 7.1(g)"
+    data_needed_text: "Changing futures or option OI"
+    cards:
+      - {card_id: AP25-LB, hypothesis: "Long build-up (price up, OI up) changes the forward return", event: "eq(price_oi_class, 1)", data_needed: [spot_1m, fut_oi]}
+      - {card_id: AP25-SB, hypothesis: "Short build-up (price down, OI up) changes the forward return", event: "eq(price_oi_class, 2)", data_needed: [spot_1m, fut_oi]}
+      - {card_id: AP25-SC, hypothesis: "Short covering (price up, OI down) changes the forward return", event: "eq(price_oi_class, 3)", data_needed: [spot_1m, fut_oi]}
+      - {card_id: AP25-LU, hypothesis: "Long unwinding (price down, OI down) changes the forward return", event: "eq(price_oi_class, 4)", data_needed: [spot_1m, fut_oi]}
+  - approach_id: AP26
+    group: G7
+    name: "Previous-day value-area & POC reversion"
+    phase: "3.7, 7.1(f)"
+    data_needed_text: "Usable volume"
+    cards:
+      - {card_id: AP26-POC-R, hypothesis: "Closes more than 1 ATR20 away from the previous POC revert toward it", event: "DIR(gt(dist_prev_poc, 1.0), lt(dist_prev_poc, -1.0))", side: reversal, data_needed: [spot_1m, fut_volume]}
+  - approach_id: AP27
+    group: G8
+    name: "RSI(14) extremes"
+    phase: "7.1(h)"
+    data_needed_text: "OHLC bars"
+    cards:
+      - {card_id: AP27-7030-C, hypothesis: "Textbook RSI(14) > 70 / < 30 continues", event: "DIR(gt(rsi_14, 70), lt(rsi_14, 30))", side: continuation}
+      - {card_id: AP27-7030-R, hypothesis: "Textbook RSI(14) > 70 / < 30 reverses", event: "DIR(gt(rsi_14, 70), lt(rsi_14, 30))", side: reversal}
+      - {card_id: AP27-Q-C, hypothesis: "Discovery p90 / p10 RSI(14) continues", event: "DIR(q90(rsi_14), q10(rsi_14))", side: continuation}
+      - {card_id: AP27-Q-R, hypothesis: "Discovery p90 / p10 RSI(14) reverses", event: "DIR(q90(rsi_14), q10(rsi_14))", side: reversal}
+      - {card_id: AP27-X50-C, hypothesis: "An RSI(14) cross of 50 continues", event: "DIR(cross_above(rsi_14, 50), cross_below(rsi_14, 50))", side: continuation}
+  - approach_id: AP28
+    group: G8
+    name: "MACD(12,26,9)"
+    phase: "7.1(h)"
+    data_needed_text: "OHLC bars"
+    cards:
+      - {card_id: AP28-SIGX-C, hypothesis: "A MACD signal-line cross continues", event: "DIR(cross_above(macd_hist, 0), cross_below(macd_hist, 0))", side: continuation}
+      - {card_id: AP28-ZEROX-C, hypothesis: "A MACD zero-line cross continues", event: "DIR(cross_above(macd_line, 0), cross_below(macd_line, 0))", side: continuation}
+  - approach_id: AP29
+    group: G8
+    name: "Moving-average cross & slope"
+    phase: "7.1(h)"
+    data_needed_text: "OHLC bars"
+    cards:
+      - {card_id: AP29-EMAX-C, hypothesis: "An EMA 9/21 cross continues", event: "DIR(cross_above(ema_9_21, 0), cross_below(ema_9_21, 0))", side: continuation}
+      - {card_id: AP29-EMAX-R, hypothesis: "An EMA 9/21 cross reverses", event: "DIR(cross_above(ema_9_21, 0), cross_below(ema_9_21, 0))", side: reversal}
+      - {card_id: AP29-SLOPE-C, hypothesis: "Extreme-decile EMA slope continues", event: "DIR(q90(ema_slope), q10(ema_slope))", side: continuation}
+  - approach_id: AP30
+    group: G8
+    name: "Bollinger %b(20,2)"
+    phase: "7.1(h)"
+    data_needed_text: "OHLC bars"
+    cards:
+      - {card_id: AP30-PCTB-C, hypothesis: "Band walk: %b > 1 / < 0 continues", event: "DIR(gt(bb_pctb, 1), lt(bb_pctb, 0))", side: continuation}
+      - {card_id: AP30-PCTB-R, hypothesis: "Band fade: %b > 1 / < 0 reverses", event: "DIR(gt(bb_pctb, 1), lt(bb_pctb, 0))", side: reversal}
+      - {card_id: AP30-BW, hypothesis: "Lowest-decile bandwidth raises expansion probability (overlap with AP09 logged)", event: "q10(bb_bandwidth_pct)", target: T4, horizons: [5, 10, 20], cost_series: structure_only}
+  - approach_id: AP31
+    group: G8
+    name: "Supertrend / ATR-trend flip"
+    phase: "7.1(h)"
+    data_needed_text: "OHLC bars"
+    cards:
+      - {card_id: AP31-FLIP-C, hypothesis: "A Supertrend(10,3) flip continues", event: "DIR(cross_above(supertrend_dir, 0), cross_below(supertrend_dir, 0))", side: continuation}
+      - {card_id: AP31-FLIP-R, hypothesis: "A Supertrend(10,3) flip reverses", event: "DIR(cross_above(supertrend_dir, 0), cross_below(supertrend_dir, 0))", side: reversal}
+  - approach_id: AP32
+    group: G9
+    name: "Momentum / trend-following style (roll-up)"
+    phase: "2.2, 7.1"
+    data_needed_text: "Member data"
+    rollup: {side: continuation, members: [AP12, AP14, AP17, AP20, AP23, AP28, AP29, AP31], variance_ratio: "> 1"}
+    cards: []
+  - approach_id: AP33
+    group: G9
+    name: "Mean-reversion / fade style (roll-up)"
+    phase: "2.2, 7.1"
+    data_needed_text: "Member data"
+    rollup: {side: reversal, members: [AP15, AP18, AP19, AP22, AP24, AP27, AP30], variance_ratio: "< 1"}
+    cards: []
+  - approach_id: AP34
+    group: G10
+    name: "Opening drive vs opening reversal"
+    phase: "2.4, 5.1"
+    data_needed_text: "Intraday bars"
+    cards:
+      - {card_id: AP34-OD15-C, hypothesis: "The first-15-minute direction continues", event: "DIR(AND(at_checkpoint(cp_0930), gt(day_ret_so_far, 0)), AND(at_checkpoint(cp_0930), lt(day_ret_so_far, 0)))", side: continuation, horizons: [5, 10, 20]}
+      - {card_id: AP34-OD15-R, hypothesis: "The first-15-minute direction reverses", event: "DIR(AND(at_checkpoint(cp_0930), gt(day_ret_so_far, 0)), AND(at_checkpoint(cp_0930), lt(day_ret_so_far, 0)))", side: reversal, horizons: [5, 10, 20]}
+      - {card_id: AP34-OD30-C, hypothesis: "The first-30-minute direction continues", event: "DIR(AND(at_checkpoint(cp_0945), gt(day_ret_so_far, 0)), AND(at_checkpoint(cp_0945), lt(day_ret_so_far, 0)))", side: continuation, horizons: [5, 10, 20]}
+  - approach_id: AP35
+    group: G10
+    name: "Lunch-lull & last-hour windows"
+    phase: "5.1, 5.3"
+    data_needed_text: "Intraday bars (options for decay)"
+    cards:
+      - {card_id: AP35-LUNCH, hypothesis: "Lunch-lull bars drift differently from vol-matched other slots", event: "in_window(lunch_lull)", horizons: [3, 5, 10], baseline: other_slots_vol_matched}
+      - {card_id: AP35-LUNCHABS, hypothesis: "Lunch-lull bars move less than vol-matched other slots", event: "in_window(lunch_lull)", target: T2, horizons: [3, 5, 10], baseline: other_slots_vol_matched, cost_series: structure_only}
+      - {card_id: AP35-LAST, hypothesis: "Last-hour bars drift differently from vol-matched other slots", event: "in_window(last_hour)", horizons: [3, 5, 10], baseline: other_slots_vol_matched}
+      - {card_id: AP35-LASTABS, hypothesis: "Last-hour bars move differently from vol-matched other slots", event: "in_window(last_hour)", target: T2, horizons: [3, 5, 10], baseline: other_slots_vol_matched, cost_series: structure_only}
+  - approach_id: AP36
+    group: G10
+    name: "Overnight gap, weekday & month-end/start"
+    phase: "2.4, 5.2"
+    data_needed_text: "Daily/intraday bars (weekday-slot subject to 625-day POWER LIMIT)"
+    cards:
+      - {card_id: AP36-ON, hypothesis: "The overnight return after the last bar differs from zero", event: "in_window(close_bar)", target: T8, horizons: [1], cost_series: option_buyer}
+      - {card_id: AP36-MEND, hypothesis: "Causal month-end sessions (day >= 28) have a forward-return lift from the open", event: "AND(eq(month_end, 1), eq(slot, 0))", horizons: [10, 20]}
+      - {card_id: AP36-MSTART, hypothesis: "Month-start sessions (day <= 3) have a forward-return lift from the open", event: "AND(eq(month_start, 1), eq(slot, 0))", horizons: [10, 20]}
+      - {card_id: AP36-WD0, hypothesis: "Monday sessions have a forward-return lift from the open", event: "AND(eq(weekday, 0), eq(slot, 0))", horizons: [10, 20]}
+      - {card_id: AP36-WD1, hypothesis: "Tuesday sessions have a forward-return lift from the open", event: "AND(eq(weekday, 1), eq(slot, 0))", horizons: [10, 20]}
+      - {card_id: AP36-WD2, hypothesis: "Wednesday sessions have a forward-return lift from the open", event: "AND(eq(weekday, 2), eq(slot, 0))", horizons: [10, 20]}
+      - {card_id: AP36-WD3, hypothesis: "Thursday sessions have a forward-return lift from the open", event: "AND(eq(weekday, 3), eq(slot, 0))", horizons: [10, 20]}
+      - {card_id: AP36-WD4, hypothesis: "Friday sessions have a forward-return lift from the open", event: "AND(eq(weekday, 4), eq(slot, 0))", horizons: [10, 20]}

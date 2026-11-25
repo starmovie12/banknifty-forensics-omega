@@ -1,0 +1,38 @@
+# Runtime artifacts (PRD §7.8) — never committed
+/raw/
+/incoming/
+/store/
+/runs/
+/cache/
+/ledger/
+/tickets/
+/proposals/
+/week_*/
+/bricks_pending.yaml
+/sim_out*.json
+
+# Secrets and local environment
+.env
+.env.*
+!.env.example
+*.token
+
+# Python / tooling caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store

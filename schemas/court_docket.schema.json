@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bn-forensics.local/schemas/court_docket.schema.json",
+  "title": "Frozen Court docket (FILE-018, S5 App D, K-049)",
+  "schema_version": "1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version", "session", "alpha_k", "K", "jaccard_max", "frozen_at", "data_version",
+    "court_days_hash", "B_court", "power_precheck", "exposure", "cards"
+  ],
+  "properties": {
+    "schema_version": {"const": "1.0"},
+    "session": {"type": "integer", "minimum": 1},
+    "alpha_k": {"type": "number", "exclusiveMinimum": 0, "maximum": 0.05},
+    "K": {"type": "integer", "minimum": 1, "maximum": 50},
+    "jaccard_max": {"type": "number", "minimum": 0, "maximum": 0.5},
+    "frozen_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?\\+05:30$"
+    },
+    "data_version": {"$ref": "#/$defs/sha256"},
+    "court_days_hash": {"$ref": "#/$defs/sha256"},
+    "B_court": {"type": "integer", "minimum": 10000},
+    "power_precheck": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["median_event_days", "projected_mde_sd", "ceiling_sd", "passed"],
+      "properties": {
+        "median_event_days": {"type": "number", "minimum": 0},
+        "projected_mde_sd": {"type": ["number", "null"], "minimum": 0},
+        "ceiling_sd": {"type": "number", "exclusiveMinimum": 0},
+        "passed": {"type": "boolean"}
+      }
+    },
+    "exposure": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["virgin_days", "exposed_days"],
+      "properties": {
+        "virgin_days": {"type": "integer", "minimum": 0},
+        "exposed_days": {"type": "integer", "minimum": 0},
+        "policy": {"enum": ["cap", "exclude", "ignore"]}
+      }
+    },
+    "cards": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["card_id", "card_hash", "sign", "jaccard_max_vs_chosen", "lane"],
+        "properties": {
+          "card_id": {"type": "string", "minLength": 1, "maxLength": 64},
+          "card_hash": {"$ref": "#/$defs/sha256"},
+          "sign": {"enum": [-1, 1]},
+          "jaccard_max_vs_chosen": {"type": "number", "minimum": 0, "maximum": 0.5},
+          "lane": {"enum": ["AP", "M", "B", "USER"]},
+          "target": {"type": "string"},
+          "horizon": {"type": "integer", "minimum": 1},
+          "prior_weight": {"type": "number"},
+          "rank_score": {"type": "number"},
+          "deflated_lift": {"type": ["number", "null"]},
+          "playground_event_days": {"type": "integer", "minimum": 0},
+          "projected_court_event_days": {"type": "number", "minimum": 0}
+        }
+      }
+    },
+    "threshold": {"type": "number", "exclusiveMinimum": 0},
+    "court_days_count": {"type": "integer", "minimum": 0},
+    "seed": {"type": "integer"},
+    "run_id": {"type": "string", "pattern": "^[A-Za-z0-9_-]{1,64}$"},
+    "status": {"enum": ["FROZEN", "POWER-DEFERRED", "TESTED"]},
+    "docket_hash": {"$ref": "#/$defs/sha256"}
+  },
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+  }
+}
