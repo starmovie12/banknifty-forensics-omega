@@ -248,7 +248,9 @@ def peeking_trap_uncapped_v5(rng: np.random.Generator, n_pg: int, n_court: int, 
                            overlap=float(nl["mutant_overlap"]))
         world.X[:, ~world.pg] = court_x
         lift, se, _ = _lift_se(world.X, world.E, world.pg)
-        top = np.argsort(-np.abs(lift / se), kind="mergesort")[:5]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            score = np.nan_to_num(np.abs(lift / se), nan=0.0, posinf=0.0)
+        top = np.argsort(-score, kind="mergesort")[:5]
         for i in top:
             x = world.X[i][world.E[i] & world.court]
             if x.size < 10:
