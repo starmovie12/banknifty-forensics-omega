@@ -438,3 +438,15 @@ def test_t06_playground_module_never_reads_court_or_imports_chair() -> None:
     assert not any(m.startswith("pyarrow") for m in imported)
     for token in ("read_table", "StoreReader", "court_reader", "read_parquet"):
         assert token not in src
+
+
+def test_t06_cards_projected_below_court_floor_are_not_seated(court_setup: dict, cfg: dict) -> None:
+    """DEF-21: a card that cannot reach event_days >= 30 in Court never takes a docket seat."""
+    s = court_setup
+    n_pg = len(s["manifest"].playground_days)
+    rare = Candidate(card_id="C-0802", card_hash="b" * 64, lane="B", sign=1, target="T1", horizon=3, prior_weight=1.0,
+                     deflated_lift=9.0, event_days=frozenset(s["manifest"].playground_days[:5]), playground_days=n_pg)
+    assert rare.event_rate * len(s["manifest"].court_days) < cfg["court"]["event_days_min"]
+    docket = ct.freeze_docket([rare, s["cand"]], s["manifest"], cfg, K=2, run_id="run_t06", path=s["tmp"] / "floor.json")
+    assert [c["card_id"] for c in docket["cards"]] == ["C-0800"]
+    assert all(c["projected_court_event_days"] >= cfg["court"]["event_days_min"] for c in docket["cards"])

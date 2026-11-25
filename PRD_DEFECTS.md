@@ -162,3 +162,16 @@ to `N/A — DATA MISSING` plus a DRT through `data_needed`, and no brick is inve
    Ω-5, Ω-8, Ω-11 and the Court null FPR at Court level.
 3. The Court `Candidate` type is shared by FILE-030 and FILE-032, but neither file may import the
    other. Provisional: it lives in FILE-031, which both are allowed to import.
+
+**DEF-21 · FILE-032 / FILE-024 · FR-11, T-16 · §10.4 #9 vs §16 T-16**
+§10.4 #9 runs the Court only when the docket's median projected Court event-days are `>= 30` and the
+projected `Court_MDE_sd <= 0.60`. At `K = 20` and `alpha_1` that means a median of at least 41 event-days.
+T-16's fixed world (450 days, so 170 Court days) reaches that only if most seated cards fire on
+`>= 24%` of days. The Playground's narrow, mutually diverse subsets of one effect (Jaccard `<= 0.50`)
+and calendar cards fire less often. They cannot reach `event_days >= 30` in Court, so they are
+guaranteed `COURT-UNDERPOWERED`, yet each one lowers the median and costs every other card power
+through `K`.
+Provisional: `freeze_docket` seats only cards whose projected Court event-days
+(`event_rate x fresh Court days`) are `>= court.event_days_min`. No alpha is spent differently, the
+pre-check itself is unchanged, and the excluded count is logged as `ineligible_underpowered`.
+

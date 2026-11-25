@@ -122,7 +122,11 @@ def freeze_docket(pool: Sequence[Candidate], manifest: SplitManifest, cfg: dict[
     K = int(court["K_default"] if K is None else K)
     k = manifest.session_k + 1
     a_k = alpha_k(k, float(court["alpha_total"]))
-    chosen = greedy_diverse(pool, K, jaccard_max=float(court["jaccard_max"]), lane_m_reserve=int(court["lane_m_reserve"]))
+    # DEF-21: a card whose projected Court event-days fall below event_days_min can only end
+    # COURT-UNDERPOWERED; it is not seated (it would cost every other card power through K).
+    floor = float(court["event_days_min"])
+    eligible = [c for c in pool if c.event_rate * len(manifest.court_days) >= floor]
+    chosen = greedy_diverse(eligible, K, jaccard_max=float(court["jaccard_max"]), lane_m_reserve=int(court["lane_m_reserve"]))
     check = power_precheck([c for c, _ in chosen], len(manifest.court_days), k, K, cfg)
     if court_days_hash(manifest.dates("court_days")) != manifest.court_days_hash:
         raise DocketTamper("split manifest court_days_hash mismatch before docket freeze")
@@ -145,7 +149,8 @@ def freeze_docket(pool: Sequence[Candidate], manifest: SplitManifest, cfg: dict[
     validate_or_raise(docket, "court_docket", what="court_docket.json")
     atomic_write_json(path, docket)
     if log is not None:
-        log.emit("docket_frozen", {"session_k": k, "K": K, "cards": len(chosen), "docket_hash": docket["docket_hash"]},
+        log.emit("docket_frozen", {"session_k": k, "K": K, "cards": len(chosen), "docket_hash": docket["docket_hash"],
+                                   "ineligible_underpowered": len(pool) - len(eligible)},
                  stage="Ω-S4", role="AG-02")
         if not check["passed"]:
             log.emit("power_deferred", {"session_k": k, "median_event_days": check["median_event_days"],
