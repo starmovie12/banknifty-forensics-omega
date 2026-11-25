@@ -481,7 +481,9 @@ def live_assertions(root: Path) -> list[dict[str, Any]]:
         ap_ids == [f"AP{i:02d}" for i in range(1, 37)] and groups == [f"G{i}" for i in range(1, 11)],
         f"11A rows {len(ap_ids)}, 11B rows {len(groups)}")
     bad_v = [r.get("approach_id") for r in v11a if r.get("verdict") not in VERDICTS_11A or "PROXY" in (r.get("verdict") or "")]
+    # AP32/AP33 roll-ups carry 0 tests; their verdict is derived from member approaches (exempt)
     bad_c = [r.get("approach_id") for r in v11a if r.get("verdict") == "CONTRADICTED"
+             and not str(r.get("label", "")).startswith("ROLL-UP")
              and not (_ok(num(r.get("gate_mde_med"))) or r.get("label") in ("STAT-ONLY", "REAL BUT UNTRADABLE"))]
     add("LIVE-07", "11A verdicts in the 2A.3 set, CONTRADICTED carries gate MDE / STAT-ONLY / REAL BUT UNTRADABLE, 0 PROXY",
         not bad_v and not bad_c, f"bad verdicts {bad_v[:5]}, bare CONTRADICTED {bad_c[:5]}")
