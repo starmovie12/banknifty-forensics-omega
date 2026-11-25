@@ -336,10 +336,11 @@ def rule_2a3(approach: dict[str, Any], tests: Sequence[dict[str, Any]], *, costs
            "needed_effect": need if need is not None else "UNKNOWN", "runnable_tests": len(runnable), "tests_n30": n30,
            "missing": "", "label": ""}
     strong = grade in ("A", "B", "Ω-A", "Ω-B")
+    raw_tag = best.get("t_tag") or ""          # an untagged best test is never SUPPORTED (same as FILE-028)
     if strong and int(num(best.get("skeptic_ran")) if _ok(num(best.get("skeptic_ran"))) else 0) >= 3 and not day_limited \
-            and tag in ("T1", "T2", "T?", "STRUCTURE-ONLY"):
+            and raw_tag in ("T1", "T2", "T?", "STRUCTURE-ONLY"):
         return {**out, "verdict": "SUPPORTED FOR HYPOTHESIS", "reason": f"best {best.get('test_id', '')} grade {grade}, tag {tag}"}
-    if strong and tag == "T3":
+    if strong and raw_tag == "T3":
         return {**out, "verdict": "CONTRADICTED", "label": "REAL BUT UNTRADABLE",
                 "reason": f"statistically real but below matching cost (gate MDE {gate_med:.3f} ATR20)"}
     no_abc = not any((t.get("grade") or "D") in ("A", "B", "C", "Ω-A", "Ω-B", "Ω-C") for t in runnable)
