@@ -175,3 +175,18 @@ Provisional: `freeze_docket` seats only cards whose projected Court event-days
 (`event_rate x fresh Court days`) are `>= court.event_days_min`. No alpha is spent differently, the
 pre-check itself is unchanged, and the excluded count is logged as `ineligible_underpowered`.
 
+**DEF-22 · FILE-038 / FILE-039 · §15.2 tripwire #13 vs §9.4 Target Menu**
+Tripwire #13 bans `buy/sell/enter/exit/stop/target/win-rate` outside quoted claims. But the PRD itself
+names the fixed-horizon outcome menu "Targets" (`T1`–`T8`, `config/targets.yaml`), and the 37-column
+registry quotes card hypotheses.
+Provisional: the scan covers generated narrative only (Hinglish summary, `OWNER_BRIEF.md`, footer). It
+flags `buy, sell, enter, entry, exit, stop, stop-loss, win-rate`. "target" in the `T1`–`T8` menu sense
+and quoted registry statements are excluded.
+
+**DEF-23 · FILE-038 · FR-16 vs §10.4 #9 (POWER-DEFERRED dockets)**
+A `POWER-DEFERRED` docket opens no Court file, so its cards have no Court numbers for Step F to recompute.
+Leaving them blank would make every deferred run `PARTIAL` ("NO EVENT SPEC").
+Provisional: deferred docket rows enter the registry labelled `POWER-DEFERRED` with their Playground
+evidence (`Phase Ω-S3`, `Burn count 0`, no `Validation lift`, grade `D`). Their Playground event specs go to
+`tables/registry_events.csv`, so verify recomputes them like any other row.
+
