@@ -190,3 +190,10 @@ Provisional: deferred docket rows enter the registry labelled `POWER-DEFERRED` w
 evidence (`Phase Ω-S3`, `Burn count 0`, no `Validation lift`, grade `D`). Their Playground event specs go to
 `tables/registry_events.csv`, so verify recomputes them like any other row.
 
+**DEF-24 · FILE-007 · L1 "every JSON/YAML artifact carries schema_version" vs GitHub Actions syntax**
+A GitHub Actions workflow rejects unknown top-level keys, so `.github/workflows/ci.yml` cannot carry a
+top-level `schema_version`.
+Provisional: the workflow carries it as `env.SCHEMA_VERSION: "1.0"`, and a test asserts it. The same
+test asserts the 3.11/3.13/3.14 matrix, read-only permissions, lint, pytest, the Ω-3 peeking ban, the F1.2
+isolation check, the token scan, the exit-3 check and the twice-run selftest SHA comparison.
+
