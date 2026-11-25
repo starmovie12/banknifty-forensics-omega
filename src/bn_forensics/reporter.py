@@ -115,6 +115,7 @@ def load_run(run_dir: Path, runs_root: Path) -> dict[str, Any]:
         "ledger_cards": _rows(runs_root / "ledger" / "cards.csv"), "next_actions": y("next_actions.yaml") or {"actions": []},
         "futility": y("futility_certificate.yaml"), "tickets": (y("tickets/open_tickets.yaml") or {}).get("tickets", []),
         "plan": _plan(run_dir / "test_plan.md"), "phase_files": sorted(p.name for p in t.glob("phase_*.csv")),
+        "excursion": [r for r in _rows(t / "phase_2_7.csv") if r.get("horizon")],
         "digests": [p.read_text(encoding="utf-8") for p in sorted((run_dir / "digests").glob("S*.md"))],
     }
 
@@ -336,6 +337,7 @@ def strategy_pack(rf: dict[str, Any], chair: Chair | None) -> dict[str, Any]:
         "validated_findings": findings, "orthogonal_independent_effects": effects,
         "break_even_costs": {"underlying_cost_pts": _num(rf["plan"]["cost_pts_underlying"]) if "cost_pts_underlying" in rf["plan"] else None},
         "approach_verdicts_11a": [{"approach_id": r["approach_id"], "verdict": r["verdict"], "label": r.get("label", ""),
+                                   "gate_mde_med": _num(r.get("gate_mde_med")) if math.isfinite(_num(r.get("gate_mde_med"))) else None,
                                    "reason": sanitize_text(r.get("reason", ""), 200)} for r in rf["v11a"]],
         "group_verdicts_11b": [{"group": r["group"], "verdict": r["verdict"], "reason": r.get("reason", "")} for r in rf["v11b"]],
         "graveyard_summary": {"rows": len(rf["graveyard"]), "sha256": sha256_file(rf["run_dir"] / "tables" / "graveyard.csv") if (rf["run_dir"] / "tables" / "graveyard.csv").exists() else "",
@@ -344,7 +346,7 @@ def strategy_pack(rf: dict[str, Any], chair: Chair | None) -> dict[str, Any]:
         "ledger_states": [{"card_id": c["card_id"], "state": c["state"], "e_value": c.get("e_value", "")} for c in rf["ledger_cards"]],
         "open_data_tickets": [{"ticket_id": t["ticket_id"], "priority": t["priority"], "what": sanitize_text(_what(t), 160)} for t in rf["tickets"]],
         "futility_certificate": rf["futility"],
-        "must_carry_caveats": [FOOTER.capitalize(), "SUPPORTED FOR HYPOTHESIS is not a rule", "SELF-REVIEW is not proof"],
+        "must_carry_caveats": run_caveats(rf),
         "exposure_summary": {"virgin_days": int(_virgin(sp)),
                              "exposed_days": int(_exposed(sp)),
                              "policy": sp.get("exposure_policy", "cap"), "per_finding": per_finding},
@@ -353,6 +355,53 @@ def strategy_pack(rf: dict[str, Any], chair: Chair | None) -> dict[str, Any]:
     }
     validate_or_raise(pack, "strategy_input_pack", what="strategy_input_pack.json")
     return pack
+
+
+def run_caveats(rf: dict[str, Any]) -> list[str]:
+    """Run-level ``must_carry_caveats`` (App F Q7): fixed boundary caveats plus every condition that applies."""
+    sp = rf["split"]
+    out = [FOOTER.capitalize(), "SUPPORTED FOR HYPOTHESIS is not a rule; Ω-A is not a ready-to-trade rule",
+           "Skeptic SURVIVED = SELF-REVIEW scripted re-tests passed, never proof"]
+    if sp.get("day_limited"):
+        out.append("DAY-LIMITED: fewer than 120 usable days; no approach may be SUPPORTED")
+    if sp.get("mode") == "SCOUT":
+        out.append("SCOUT mode: power audit shortfall")
+    if any("UNVERIFIED-CAUSAL" in (r.get("Label") or "") for r in rf["registry"]):
+        out.append("UNVERIFIED-CAUSAL: *_DERIVED recipe missing for some inputs")
+    if "cost_pts_underlying" not in rf["plan"]:
+        out.append("Costs NOT PROVIDED: tradability tags are T? (USER TO CONFIRM)")
+    if any(t.get("trigger") == "CALENDAR" for t in rf["tickets"]):
+        out.append("Expiry calendar missing: expiry/DTE/holiday items are N/A — DATA MISSING")
+    if rf["futility"]:
+        out.append("Futility != no edge exists (futility_certificate.yaml)")
+    if _exposed(sp):
+        out.append("EXPOSED-COURT days were seen by earlier research (R28)")
+    return out
+
+
+def handoff_answer_key(report_text: str, pack: dict[str, Any]) -> dict[int, str]:
+    """T-13 answerability (DEF-04): answer the 10 App F questions from the report + pack ONLY."""
+    md = pack["metadata"]
+    findings = pack["validated_findings"]
+    ab = [f for f in findings if f["grade"] in ("Ω-A", "Ω-B")]
+    contra = [a for a in pack["approach_verdicts_11a"] if a["verdict"] == "CONTRADICTED"]
+    na = [a["approach_id"] for a in pack["approach_verdicts_11a"] if a["verdict"].startswith("N/A")]
+    top = pack["open_data_tickets"][0]["ticket_id"] if pack["open_data_tickets"] else "none"
+    flagged = [f["finding_id"] for f in findings if {"MECHANISM-REFUTED", "FEW-DAY-DEPENDENT"} & set(f.get("labels", []))]
+    floors = [ln for ln in report_text.splitlines() if ln.startswith("- [FACT] h=") and "up p50" in ln]
+    be = pack["break_even_costs"].get("underlying_cost_pts")
+    return {
+        1: f"{md['date_range']['from']}..{md['date_range']['to']}; usable_days {md['usable_days']}; data_version {md['data_version']}",
+        2: "; ".join(f"{f['finding_id']} {f['grade']} deflated_lift {f['deflated_lift']}" for f in ab) or "none",
+        3: f"N_indep {md.get('n_indep', 0)}; lifts can NOT be summed (not additive)",
+        4: "NO — SUPPORTED FOR HYPOTHESIS / Ω-A is diagnosis, not a ready-to-trade rule",
+        5: "; ".join(f"{a['approach_id']} gate MDE {a.get('gate_mde_med')} {a.get('label', '')}".strip() for a in contra) or "none",
+        6: f"N/A: {', '.join(na) or 'none'}; top VoI DRT {top}",
+        7: "; ".join(pack["must_carry_caveats"]),
+        8: "SELF-REVIEW: scripted re-tests passed, never proof",
+        9: ", ".join(flagged) or "none",
+        10: f"noise floors: {len(floors)} horizons ({floors[0][9:] if floors else 'n/a'}); break-even underlying {be if be is not None else 'NOT PROVIDED'} pts",
+    }
 
 
 def scorecard(rf: dict[str, Any], texts: dict[str, str], hinglish: list[str], tokens: int, cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -544,13 +593,19 @@ def report_markdown(rf: dict[str, Any], mode_line: str, hinglish: list[str], *, 
           "- [FACT] Coverage matrix: tables/coverage_matrix.csv (0 empty cells).", ""]
     L += ["## 6. Phase Results & Truth Layer Audit Summary"]
     L += [f"- [FACT] {r['check']}: {r['value']} ({r['status']})" for r in rf["null_rows"]]
+    L += ["### Noise floors (Phase 2.7 direction-neutral excursion quantiles, ATR20)"]
+    L += [f"- [FACT] h={r.get('horizon', '')}: up p50/p75/p90/p95 = {_f(r.get('up_p50'))}/{_f(r.get('up_p75'))}/{_f(r.get('up_p90'))}/{_f(r.get('up_p95'))}; "
+          f"down = {_f(r.get('down_p50'))}/{_f(r.get('down_p75'))}/{_f(r.get('down_p90'))}/{_f(r.get('down_p95'))}" for r in rf["excursion"]] or ["- [FACT] N/A — DATA MISSING"]
+    be = rf["plan"].get("cost_pts_underlying")
+    L += [f"- [FACT] Break-even round-trip cost: underlying {be + ' pts' if be else 'NOT PROVIDED (USER TO CONFIRM)'}; option costs need lot size (cost_model.worked_break_even)."]
     if overflow_step == 0:
         L += [f"- [FACT] {d.splitlines()[0]}" for d in rf["digests"] if d.strip()]
     L += ["", "## 7. Regime Atlas & Era splits", f"- [FACT] Era tags per finding are in the Regime column of findings_registry.csv; eras present {sorted(set((sp.get('eras') or {}).values()))}.", ""]
     L += ["## 8. Leaderboard, Orthogonal Basis & Findings Registry",
           f"- [FACT] N_indep {len({b['independent_effect_id'] for b in rf['basis']})} independent effects; NS excludes AP clones. Effects are not additive."]
     reg = rf["registry"] if overflow_step < 2 else [r for r in rf["registry"] if r.get("Evidence grade") in ("Ω-A", "Ω-B")][:50]
-    L += _md_table(reg, ("ID", "Label", "Event N", "Lift (ATR20)", "95% CI", "p_val", "Evidence grade", "Tradability tag", "Burn count"))
+    L += _md_table(reg, ("ID", "Label", "Event N", "Lift (ATR20)", "Deflated lift", "95% CI", "p_val", "Evidence grade", "Tradability tag",
+                         "Mechanism status", "Skeptic verdict", "Burn count"))
     gy = rf["run_dir"] / "tables" / "graveyard.csv"
     L += ["", "## 9. Graveyard", f"- [FACT] {len(rf['graveyard'])} rows; tables/graveyard.csv SHA-256 {sha256_file(gy) if gy.exists() else 'n/a'}."]
     L += _md_table(rf["graveyard"][:50], ("ID", "Lift (ATR20)", "Nominal MDE", "Stability", "graveyard_reason"))
@@ -683,12 +738,14 @@ __all__ = [
     "check_hinglish",
     "coverage_matrix",
     "estimate_tokens",
+    "handoff_answer_key",
     "hinglish_summary",
     "load_run",
     "owner_brief",
     "render_all",
     "render_partial",
     "report_markdown",
+    "run_caveats",
     "run_diff",
     "scorecard",
     "strategy_pack",
